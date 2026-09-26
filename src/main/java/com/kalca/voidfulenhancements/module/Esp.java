@@ -55,6 +55,18 @@ public class Esp extends Module {
         return modeSetting.getValue();
     }
 
+    public String getPreviewMode() {
+        return mode();
+    }
+
+    public int getPreviewColor() {
+        return colorSetting.getValue();
+    }
+
+    public boolean getPreviewCorners() {
+        return cornersSetting.getValue();
+    }
+
     @SubscribeEvent
     public void onRenderWorld(RenderWorldLastEvent event) {
         if (!isEnabled()) return;

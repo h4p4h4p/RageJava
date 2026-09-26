@@ -49,8 +49,25 @@ public class ClickGUI extends GuiScreen {
         ScaledResolution sr = new ScaledResolution(mc);
         RenderUtil.drawRect(0, 0, sr.getScaledWidth(), sr.getScaledHeight(), getDimColor());
 
+        reflow();
         for (Panel panel : panels) {
             panel.draw(mouseX, mouseY);
+        }
+    }
+
+    private final List<Float> dragOffsets = new ArrayList<>();
+
+    private void reflow() {
+        float nx = 6;
+        for (int i = 0; i < panels.size(); i++) {
+            Panel panel = panels.get(i);
+            float natural = nx;
+            while (dragOffsets.size() <= i) dragOffsets.add(0f);
+            if (!panel.isDragging()) {
+                dragOffsets.set(i, panel.getX() - natural);
+                panel.setPosition(natural + dragOffsets.get(i), panel.getY());
+            }
+            nx = natural + panel.getWidth() + 6f;
         }
     }
 

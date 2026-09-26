@@ -1,5 +1,6 @@
 package com.kalca.voidfulenhancements.gui;
 
+import com.kalca.voidfulenhancements.module.Esp;
 import com.kalca.voidfulenhancements.module.Module;
 import com.kalca.voidfulenhancements.settings.BooleanSetting;
 import com.kalca.voidfulenhancements.settings.ColorSetting;
@@ -7,21 +8,36 @@ import com.kalca.voidfulenhancements.settings.ModeSetting;
 import com.kalca.voidfulenhancements.settings.Setting;
 import com.kalca.voidfulenhancements.settings.SliderSetting;
 import com.kalca.voidfulenhancements.util.RenderUtil;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.entity.EntityOtherPlayerMP;
+import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.RenderHelper;
+import net.minecraft.client.renderer.Tessellator;
+import net.minecraft.client.renderer.entity.RenderManager;
+import net.minecraft.util.AxisAlignedBB;
+import org.lwjgl.opengl.GL11;
 
+import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class ModuleButton {
 
     private static final float ROW_HEIGHT = 14f;
     private static final float EXPAND_ZONE = 12f;
+    public static final float PREVIEW_WIDTH = 88f;
+    private static final float PREVIEW_MIN_HEIGHT = 74f;
 
     private final Module module;
     private final Panel panel;
     private final List<Widget> widgets = new ArrayList<>();
     private final List<Setting> builtSettings = new ArrayList<>();
+    private final Minecraft mc = Minecraft.getMinecraft();
     private BindWidget bindWidget;
     private boolean expanded;
+    private EntityOtherPlayerMP previewPlayer;
 
     private float x;
     private float y;
@@ -41,8 +57,16 @@ public class ModuleButton {
 
     public float getHeight() {
         float h = ROW_HEIGHT;
-        if (expanded) h += widgetsHeight();
+        if (expanded) h += Math.max(widgetsHeight(), getPreviewMinHeight());
         return h;
+    }
+
+    public boolean hasSidePreview() {
+        return module instanceof Esp;
+    }
+
+    public float getPreviewMinHeight() {
+        return hasSidePreview() ? PREVIEW_MIN_HEIGHT : 0;
     }
 
     private float widgetsHeight() {
@@ -129,17 +153,139 @@ public class ModuleButton {
         RenderUtil.drawString("...", x + width - EXPAND_ZONE + 3, y + (ROW_HEIGHT - RenderUtil.getTextHeight()) / 2f, hoverExpand ? Theme.ACCENT : Theme.TEXT_GRAY);
 
         if (expanded) {
-            float wh = widgetsHeight();
+            float wh = Math.max(widgetsHeight(), getPreviewMinHeight());
+            boolean preview = hasSidePreview();
             RenderUtil.drawRect(x, y + ROW_HEIGHT, width, wh, Theme.BODY_BG);
+            float widgetW = preview ? width - PREVIEW_WIDTH - 12 : width - 8;
             float wy = y + ROW_HEIGHT;
             for (Widget widget : widgets) {
-                widget.setPosition(x + 4, wy, width - 8, widget.getHeight());
+                widget.setPosition(x + 4, wy, widgetW, widget.getHeight());
                 widget.draw(mx, my);
                 wy += widget.getHeight();
+            }
+            if (preview) {
+                float sepX = x + 4 + widgetW + 4;
+                RenderUtil.drawRect(sepX, y + ROW_HEIGHT, 1, wh, Theme.SEPARATOR);
+                drawEspPreview((Esp) module, sepX + 6, y + ROW_HEIGHT, width - (sepX + 6) - 4, wh);
             }
             RenderUtil.drawRect(x + 4, y + ROW_HEIGHT + wh - 1, width - 8, 1, Theme.SEPARATOR);
         } else {
             RenderUtil.drawRect(x + 4, y + ROW_HEIGHT - 1, width - 8, 1, Theme.SEPARATOR);
+        }
+    }
+
+    private void drawEspPreview(Esp esp, float px, float py, float pw, float ph) {
+        EntityOtherPlayerMP player = getPreviewEntity();
+        if (player == null) return;
+
+        int color = esp.getPreviewColor();
+        int r = (color >> 16) & 0xFF;
+        int g = (color >> 8) & 0xFF;
+        int b = color & 0xFF;
+        boolean draw3D = Esp.MODE_3D.equals(esp.getPreviewMode());
+
+        float cx = px + pw / 2f;
+        float top = py + 4f;
+        float bottom = py + ph - 4f;
+        float scale = (bottom - top) / 1.8f;
+
+        boolean depthWas = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
+
+        GlStateManager.enableColorMaterial();
+        GlStateManager.enableRescaleNormal();
+        GlStateManager.pushMatrix();
+        GlStateManager.translate(cx, bottom, 80.0F);
+        GlStateManager.scale(scale, scale, scale);
+        GlStateManager.rotate(180.0F, 0.0F, 0.0F, 1.0F);
+        GlStateManager.rotate(135.0F, 0.0F, 1.0F, 0.0F);
+        RenderHelper.enableStandardItemLighting();
+        if (!depthWas) GlStateManager.enableDepth();
+        mc.getRenderManager().renderEntityWithPosYaw(player, 0.0D, 0.0D, 0.0D, 0.0F, 1.0F);
+        RenderHelper.disableStandardItemLighting();
+
+        if (draw3D) {
+            GlStateManager.disableDepth();
+            GlStateManager.disableTexture2D();
+            AxisAlignedBB box = AxisAlignedBB.fromBounds(-0.1D, -0.1D, -0.1D, 0.7D, 1.9D, 0.7D);
+            RenderUtil.drawOutlinedBox(Tessellator.getInstance(), box, r, g, b, 255);
+            GlStateManager.enableTexture2D();
+        }
+        GlStateManager.popMatrix();
+        GlStateManager.disableRescaleNormal();
+        GlStateManager.disableColorMaterial();
+
+        if (depthWas) {
+            GlStateManager.enableDepth();
+        } else {
+            GlStateManager.disableDepth();
+        }
+
+        if (!draw3D) {
+            float h = bottom - top;
+            float w = h * 0.5f;
+            float xr = cx - w / 2f;
+            float len = Math.max(4f, Math.min(h / 6f, 10f));
+            if (esp.getPreviewCorners()) {
+                RenderUtil.drawRect(xr, top, len, 1, color);
+                RenderUtil.drawRect(xr, top, 1, len, color);
+                RenderUtil.drawRect(xr + w - len, top, len, 1, color);
+                RenderUtil.drawRect(xr + w - 1, top, 1, len, color);
+                RenderUtil.drawRect(xr, top + h - 1, len, 1, color);
+                RenderUtil.drawRect(xr, top + h - len, 1, len, color);
+                RenderUtil.drawRect(xr + w - len, top + h - 1, len, 1, color);
+                RenderUtil.drawRect(xr + w - 1, top + h - len, 1, len, color);
+            } else {
+                RenderUtil.drawRect(xr, top, w, 1, color);
+                RenderUtil.drawRect(xr, top + h - 1, w, 1, color);
+                RenderUtil.drawRect(xr, top, 1, h, color);
+                RenderUtil.drawRect(xr + w - 1, top, 1, h, color);
+            }
+        }
+    }
+
+    private EntityOtherPlayerMP getPreviewEntity() {
+        if (mc.theWorld == null || mc.getSession() == null) return null;
+        if (previewPlayer == null || previewPlayer.worldObj != mc.theWorld) {
+            previewPlayer = new EntityOtherPlayerMP(mc.theWorld, mc.getSession().getProfile());
+        }
+
+        double rx = getRenderPos("renderPosX");
+        double ry = getRenderPos("renderPosY");
+        double rz = getRenderPos("renderPosZ");
+        previewPlayer.setPosition(rx, ry, rz);
+        previewPlayer.lastTickPosX = rx;
+        previewPlayer.lastTickPosY = ry;
+        previewPlayer.lastTickPosZ = rz;
+        previewPlayer.prevPosX = rx;
+        previewPlayer.prevPosY = ry;
+        previewPlayer.prevPosZ = rz;
+        previewPlayer.rotationYaw = 0;
+        previewPlayer.rotationPitch = 0;
+        previewPlayer.rotationYawHead = 0;
+        previewPlayer.renderYawOffset = 0;
+        previewPlayer.limbSwing = 0;
+        previewPlayer.limbSwingAmount = 0;
+        previewPlayer.prevLimbSwingAmount = 0;
+        previewPlayer.swingProgress = 0;
+        previewPlayer.prevSwingProgress = 0;
+        previewPlayer.onGround = true;
+        previewPlayer.hurtTime = 0;
+        return previewPlayer;
+    }
+
+    private static final Map<String, Field> RENDER_POS_FIELDS = new HashMap<>();
+
+    private double getRenderPos(String name) {
+        try {
+            Field field = RENDER_POS_FIELDS.get(name);
+            if (field == null) {
+                field = RenderManager.class.getDeclaredField(name);
+                field.setAccessible(true);
+                RENDER_POS_FIELDS.put(name, field);
+            }
+            return field.getDouble(mc.getRenderManager());
+        } catch (Exception ignored) {
+            return 0.0D;
         }
     }
 
