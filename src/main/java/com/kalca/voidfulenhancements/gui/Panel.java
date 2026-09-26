@@ -52,19 +52,17 @@ public class Panel {
 
     public float getWidth() {
         float w = WIDTH;
-        float widgetMax = 0;
         for (ModuleButton button : buttons) {
+            float bw = RenderUtil.getTextWidth(button.getModule().getName());
             float bindW = button.getBindWidget() == null ? 0 : RenderUtil.getTextWidth(button.getBindWidget().keyName());
-            w = Math.max(w, RenderUtil.getTextWidth(button.getModule().getName()) + bindW + 36);
+            bw += bindW + 36;
             for (Widget widget : button.getWidgets()) {
-                widgetMax = Math.max(widgetMax, widget.getPreferredWidth() + 8);
+                bw = Math.max(bw, widget.getPreferredWidth() + 8);
             }
-        }
-        w = Math.max(w, widgetMax);
-        for (ModuleButton button : buttons) {
             if (button.isExpanded() && button.hasSidePreview()) {
-                w = Math.max(w, widgetMax + ModuleButton.PREVIEW_WIDTH + 12);
+                bw += ModuleButton.PREVIEW_WIDTH + 16;
             }
+            w = Math.max(w, bw);
         }
         return w;
     }

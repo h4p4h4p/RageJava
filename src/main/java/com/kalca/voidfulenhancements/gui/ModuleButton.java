@@ -15,6 +15,8 @@ import net.minecraft.client.renderer.RenderHelper;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.entity.RenderManager;
 import net.minecraft.util.AxisAlignedBB;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.GL11;
 
 import java.lang.reflect.Field;
@@ -25,6 +27,7 @@ import java.util.Map;
 
 public class ModuleButton {
 
+    private static final Logger LOGGER = LogManager.getLogger("VoidfulEnhancements");
     private static final float ROW_HEIGHT = 14f;
     private static final float EXPAND_ZONE = 12f;
     public static final float PREVIEW_WIDTH = 88f;
@@ -156,7 +159,12 @@ public class ModuleButton {
             float wh = Math.max(widgetsHeight(), getPreviewMinHeight());
             boolean preview = hasSidePreview();
             RenderUtil.drawRect(x, y + ROW_HEIGHT, width, wh, Theme.BODY_BG);
-            float widgetW = preview ? width - PREVIEW_WIDTH - 12 : width - 8;
+
+            float bodyRight = x + width - 4;
+            float pw = PREVIEW_WIDTH;
+            float px = preview ? bodyRight - pw + 3 : bodyRight;
+            float widgetW = preview ? px - (x + 4) - 8 : width - 8;
+
             float wy = y + ROW_HEIGHT;
             for (Widget widget : widgets) {
                 widget.setPosition(x + 4, wy, widgetW, widget.getHeight());
@@ -164,9 +172,8 @@ public class ModuleButton {
                 wy += widget.getHeight();
             }
             if (preview) {
-                float sepX = x + 4 + widgetW + 4;
-                RenderUtil.drawRect(sepX, y + ROW_HEIGHT, 1, wh, Theme.SEPARATOR);
-                drawEspPreview((Esp) module, sepX + 6, y + ROW_HEIGHT, width - (sepX + 6) - 4, wh);
+                RenderUtil.drawRect(px - 5, y + ROW_HEIGHT, 1, wh, Theme.SEPARATOR);
+                drawEspPreview((Esp) module, px, y + ROW_HEIGHT, pw, wh);
             }
             RenderUtil.drawRect(x + 4, y + ROW_HEIGHT + wh - 1, width - 8, 1, Theme.SEPARATOR);
         } else {
@@ -183,6 +190,8 @@ public class ModuleButton {
         int g = (color >> 8) & 0xFF;
         int b = color & 0xFF;
         boolean draw3D = Esp.MODE_3D.equals(esp.getPreviewMode());
+
+        logPreviewLayout(px, pw, x, width);
 
         float cx = px + pw / 2f;
         float top = py + 4f;
@@ -278,6 +287,15 @@ public class ModuleButton {
     }
 
     private static final Map<String, Field> RENDER_POS_FIELDS = new HashMap<>();
+
+    private float lastLoggedPx = Float.NaN;
+
+    private void logPreviewLayout(float px, float pw, float buttonX, float buttonW) {
+        if (lastLoggedPx != px) {
+            lastLoggedPx = px;
+            LOGGER.info("ESP preview at px={} pw={} buttonX={} buttonW={}", px, pw, buttonX, buttonW);
+        }
+    }
 
     private double getRenderPos(String name) {
         try {
