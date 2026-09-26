@@ -241,6 +241,10 @@ public class ModuleButton {
                 RenderUtil.drawRect(xr + w - 1, top, 1, h, color);
             }
         }
+        if (esp.getPreviewNames()) {
+            String name = "Steve";
+            RenderUtil.drawString(name, cx - RenderUtil.getTextWidth(name) / 2f, top - 11f, 0xFFFFFFFF);
+        }
     }
 
     private EntityOtherPlayerMP getPreviewEntity() {

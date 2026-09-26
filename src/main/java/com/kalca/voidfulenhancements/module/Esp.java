@@ -32,15 +32,27 @@ public class Esp extends Module {
 
     private final ModeSetting modeSetting = new ModeSetting("Mode", new String[]{MODE_2D, MODE_3D}, 0);
     private final BooleanSetting cornersSetting = new BooleanSetting("Corners", false);
+    private final BooleanSetting namesSetting = new BooleanSetting("Names", true);
     private final ColorSetting colorSetting = new ColorSetting("Color", 0xFF1B395C);
 
     private final Minecraft mc = Minecraft.getMinecraft();
     private final List<float[]> rects = new ArrayList<>();
+    private final List<NameEntry> names = new ArrayList<>();
+
+    private final float[] mv = new float[16];
+    private final float[] pr = new float[16];
+    private IntBuffer viewport;
+    private FloatBuffer mvBuf;
+    private FloatBuffer prBuf;
+    private int vw;
+    private int vh;
+    private double scale;
 
     public Esp() {
         super("ESP", Category.RENDER);
         settings.add(modeSetting);
         settings.add(cornersSetting);
+        settings.add(namesSetting);
         settings.add(colorSetting);
         MinecraftForge.EVENT_BUS.register(this);
     }
@@ -67,11 +79,17 @@ public class Esp extends Module {
         return cornersSetting.getValue();
     }
 
+    public boolean getPreviewNames() {
+        return namesSetting.getValue();
+    }
+
     @SubscribeEvent
     public void onRenderWorld(RenderWorldLastEvent event) {
         if (!isEnabled()) return;
         if (mc.thePlayer == null || mc.theWorld == null) return;
         rects.clear();
+        names.clear();
+        if (!captureMatrices()) return;
         if (MODE_3D.equals(mode())) {
             render3D(event.partialTicks);
         } else {
@@ -82,31 +100,68 @@ public class Esp extends Module {
     @SubscribeEvent
     public void onOverlay(RenderGameOverlayEvent.Post event) {
         if (!isEnabled()) return;
-        if (!MODE_2D.equals(mode())) return;
         if (event.type != RenderGameOverlayEvent.ElementType.ALL) return;
-        for (float[] r : rects) {
-            float x = r[0];
-            float y = r[1];
-            float w = r[2];
-            float h = r[3];
-            int color = colorSetting.getValue();
-            float len = Math.max(4f, Math.min(h / 6f, 10f));
-            if (cornersSetting.getValue()) {
-                RenderUtil.drawRect(x, y, len, 1, color);
-                RenderUtil.drawRect(x, y, 1, len, color);
-                RenderUtil.drawRect(x + w - len, y, len, 1, color);
-                RenderUtil.drawRect(x + w - 1, y, 1, len, color);
-                RenderUtil.drawRect(x, y + h - 1, len, 1, color);
-                RenderUtil.drawRect(x, y + h - len, 1, len, color);
-                RenderUtil.drawRect(x + w - len, y + h - 1, len, 1, color);
-                RenderUtil.drawRect(x + w - 1, y + h - len, 1, len, color);
-            } else {
-                RenderUtil.drawRect(x, y, w, 1, color);
-                RenderUtil.drawRect(x, y + h - 1, w, 1, color);
-                RenderUtil.drawRect(x, y, 1, h, color);
-                RenderUtil.drawRect(x + w - 1, y, 1, h, color);
+        if (MODE_2D.equals(mode())) {
+            for (float[] r : rects) {
+                float x = r[0];
+                float y = r[1];
+                float w = r[2];
+                float h = r[3];
+                int color = colorSetting.getValue();
+                float len = Math.max(4f, Math.min(h / 6f, 10f));
+                if (cornersSetting.getValue()) {
+                    RenderUtil.drawRect(x, y, len, 1, color);
+                    RenderUtil.drawRect(x, y, 1, len, color);
+                    RenderUtil.drawRect(x + w - len, y, len, 1, color);
+                    RenderUtil.drawRect(x + w - 1, y, 1, len, color);
+                    RenderUtil.drawRect(x, y + h - 1, len, 1, color);
+                    RenderUtil.drawRect(x, y + h - len, 1, len, color);
+                    RenderUtil.drawRect(x + w - len, y + h - 1, len, 1, color);
+                    RenderUtil.drawRect(x + w - 1, y + h - len, 1, len, color);
+                } else {
+                    RenderUtil.drawRect(x, y, w, 1, color);
+                    RenderUtil.drawRect(x, y + h - 1, w, 1, color);
+                    RenderUtil.drawRect(x, y, 1, h, color);
+                    RenderUtil.drawRect(x + w - 1, y, 1, h, color);
+                }
             }
         }
+        if (namesSetting.getValue()) {
+            for (NameEntry entry : names) {
+                RenderUtil.drawString(entry.text, entry.x - RenderUtil.getTextWidth(entry.text) / 2f, entry.y - 9f, 0xFFFFFFFF);
+            }
+        }
+    }
+
+    private boolean captureMatrices() {
+        if (mvBuf == null) {
+            viewport = BufferUtils.createIntBuffer(16);
+            mvBuf = BufferUtils.createFloatBuffer(16);
+            prBuf = BufferUtils.createFloatBuffer(16);
+        }
+        mvBuf.clear();
+        prBuf.clear();
+        viewport.clear();
+        GL11.glGetFloat(GL11.GL_MODELVIEW_MATRIX, mvBuf);
+        GL11.glGetFloat(GL11.GL_PROJECTION_MATRIX, prBuf);
+        GL11.glGetInteger(GL11.GL_VIEWPORT, viewport);
+        mvBuf.get(mv);
+        prBuf.get(pr);
+        vw = viewport.get(2);
+        vh = viewport.get(3);
+        if (vw <= 0 || vh <= 0) return false;
+
+        scale = vh / (double) new ScaledResolution(mc).getScaledHeight();
+        return scale > 0;
+    }
+
+    private void addName(Entity entity, AxisAlignedBB bb, double camX, double camY, double camZ) {
+        if (!namesSetting.getValue()) return;
+        double midX = (bb.minX + bb.maxX) / 2.0D;
+        double midZ = (bb.minZ + bb.maxZ) / 2.0D;
+        double[] head = toScreen(midX - camX, bb.maxY - camY, midZ - camZ, mv, pr, vw, vh);
+        if (head == null) return;
+        names.add(new NameEntry(entity.getName(), (float) (head[0] / scale), (float) ((vh - head[1]) / scale)));
     }
 
     private void render3D(float partialTicks) {
@@ -131,6 +186,8 @@ public class Esp extends Module {
 
             if (RenderUtil.pointNearBox(camX, camY, camZ, bb, NEAR_CAMERA_MARGIN)) continue;
 
+            addName(entity, bb, camX, camY, camZ);
+
             double pad = 0.1D;
             AxisAlignedBB box = AxisAlignedBB.fromBounds(
                     bb.minX + posX - entity.posX - camX - pad,
@@ -145,23 +202,6 @@ public class Esp extends Module {
     }
 
     private void collect2D() {
-        float[] mv = new float[16];
-        float[] pr = new float[16];
-        IntBuffer viewport = BufferUtils.createIntBuffer(16);
-        FloatBuffer mvBuf = BufferUtils.createFloatBuffer(16);
-        FloatBuffer prBuf = BufferUtils.createFloatBuffer(16);
-        GL11.glGetFloat(GL11.GL_MODELVIEW_MATRIX, mvBuf);
-        GL11.glGetFloat(GL11.GL_PROJECTION_MATRIX, prBuf);
-        GL11.glGetInteger(GL11.GL_VIEWPORT, viewport);
-        mvBuf.get(mv);
-        prBuf.get(pr);
-        int vw = viewport.get(2);
-        int vh = viewport.get(3);
-        if (vw <= 0 || vh <= 0) return;
-
-        double scale = vh / (double) new ScaledResolution(mc).getScaledHeight();
-        if (scale <= 0) return;
-
         double camX = mc.getRenderManager().viewerPosX;
         double camY = mc.getRenderManager().viewerPosY;
         double camZ = mc.getRenderManager().viewerPosZ;
@@ -175,6 +215,7 @@ public class Esp extends Module {
             double[] feet = toScreen(midX - camX, bb.minY - camY, midZ - camZ, mv, pr, vw, vh);
             double[] head = toScreen(midX - camX, bb.maxY - camY, midZ - camZ, mv, pr, vw, vh);
             if (feet == null || head == null) continue;
+            addName(entity, bb, camX, camY, camZ);
 
             double topDownHead = vh - head[1];
             double topDownFeet = vh - feet[1];
@@ -216,5 +257,18 @@ public class Esp extends Module {
     @Override
     public void onDisable() {
         rects.clear();
+        names.clear();
+    }
+
+    private static class NameEntry {
+        final String text;
+        final float x;
+        final float y;
+
+        NameEntry(String text, float x, float y) {
+            this.text = text;
+            this.x = x;
+            this.y = y;
+        }
     }
 }
