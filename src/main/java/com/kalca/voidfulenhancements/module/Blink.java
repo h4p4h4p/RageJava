@@ -2,7 +2,6 @@ package com.kalca.voidfulenhancements.module;
 
 import com.kalca.voidfulenhancements.gui.Theme;
 import com.kalca.voidfulenhancements.settings.ModeSetting;
-import com.kalca.voidfulenhancements.settings.SliderSetting;
 import com.kalca.voidfulenhancements.util.RenderUtil;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelDuplexHandler;
@@ -31,12 +30,10 @@ public class Blink extends Module {
     private static final String HANDLER_NAME = "voidful_blink";
 
     private final ModeSetting modeSetting = new ModeSetting("Mode", new String[]{MODE_INBOUND, MODE_OUTBOUND, MODE_BOTH}, 1);
-    private final SliderSetting maxTimeSetting = new SliderSetting("MaxTime", 2.5, 0.5, 10, 0.5);
 
     private final Minecraft mc = Minecraft.getMinecraft();
     private BlinkHandler handler;
     private Channel boundChannel;
-    private long armTime;
     private boolean anchorSet;
     private double anchorX;
     private double anchorY;
@@ -45,7 +42,6 @@ public class Blink extends Module {
     public Blink() {
         super("Blink", Category.MOVEMENT);
         settings.add(modeSetting);
-        settings.add(maxTimeSetting);
         MinecraftForge.EVENT_BUS.register(this);
     }
 
@@ -70,12 +66,6 @@ public class Blink extends Module {
         if (event.phase != TickEvent.Phase.START) return;
         if (!isEnabled()) return;
         armChannel();
-        if (handler == null) return;
-        double maxMs = maxTimeSetting.getValue() * 1000.0;
-        if (System.currentTimeMillis() - armTime >= maxMs) {
-            handler.flush();
-            armTime = System.currentTimeMillis();
-        }
     }
 
     @SubscribeEvent
@@ -171,7 +161,6 @@ public class Blink extends Module {
 
     @Override
     public void onEnable() {
-        armTime = System.currentTimeMillis();
         if (mc.thePlayer != null) {
             anchorX = mc.thePlayer.posX;
             anchorY = mc.thePlayer.posY;
