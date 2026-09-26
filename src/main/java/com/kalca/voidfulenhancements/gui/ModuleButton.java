@@ -195,7 +195,7 @@ public class ModuleButton {
         GlStateManager.enableRescaleNormal();
         GlStateManager.pushMatrix();
         GlStateManager.translate(cx, bottom, 80.0F);
-        GlStateManager.scale(scale, scale, scale);
+        GlStateManager.scale(-scale, scale, scale);
         GlStateManager.rotate(180.0F, 0.0F, 0.0F, 1.0F);
         GlStateManager.rotate(135.0F, 0.0F, 1.0F, 0.0F);
         RenderHelper.enableStandardItemLighting();

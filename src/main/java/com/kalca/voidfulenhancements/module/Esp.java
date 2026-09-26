@@ -10,8 +10,10 @@ import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.AxisAlignedBB;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
+import net.minecraftforge.client.event.RenderLivingEvent;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
@@ -130,6 +132,15 @@ public class Esp extends Module {
             for (NameEntry entry : names) {
                 RenderUtil.drawString(entry.text, entry.x - RenderUtil.getTextWidth(entry.text) / 2f, entry.y - 9f, 0xFFFFFFFF);
             }
+        }
+    }
+
+    @SubscribeEvent
+    public void onRenderName(RenderLivingEvent.Specials.Pre event) {
+        if (!isEnabled()) return;
+        if (!namesSetting.getValue()) return;
+        if (event.entity instanceof EntityPlayer) {
+            event.setCanceled(true);
         }
     }
 
