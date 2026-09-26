@@ -2,7 +2,7 @@
   {
     "modid": "voidfulenhancements",
     "name": "VoidfulEnhancements",
-    "description": "VoidfulEnhancements v5.0",
+    "description": "VoidfulEnhancements v0.5",
     "version": "${version}",
     "mcversion": "${mcversion}",
     "url": "",
