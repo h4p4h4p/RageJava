@@ -1,15 +1,21 @@
 package com.kalca.voidfulenhancements.module;
 
+import com.kalca.voidfulenhancements.gui.Theme;
 import com.kalca.voidfulenhancements.settings.SliderSetting;
+import com.kalca.voidfulenhancements.util.RenderUtil;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.network.NetworkManager;
 import net.minecraft.network.play.client.C02PacketUseEntity;
 import net.minecraft.network.play.client.C03PacketPlayer;
+import net.minecraft.util.AxisAlignedBB;
+import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
@@ -35,6 +41,11 @@ public class LagRange extends Module {
     private long chokeStart;
     private long cooldownUntil;
 
+    private boolean serverSet;
+    private double serverX;
+    private double serverY;
+    private double serverZ;
+
     public LagRange() {
         super("LagRange", Category.COMBAT);
         settings.add(rangeSetting);
@@ -53,6 +64,13 @@ public class LagRange extends Module {
         if (boundChannel == null) return;
 
         long now = System.currentTimeMillis();
+        if (!choking) {
+            serverX = mc.thePlayer.posX;
+            serverY = mc.thePlayer.posY;
+            serverZ = mc.thePlayer.posZ;
+            serverSet = true;
+        }
+
         if (enemyNear()) {
             if (!choking && now >= cooldownUntil) {
                 choking = true;
@@ -66,6 +84,60 @@ public class LagRange extends Module {
         } else if (choking) {
             releaseBuffer(false);
         }
+    }
+
+    public boolean hasServerPos() {
+        return serverSet;
+    }
+
+    public double getServerX() {
+        return serverX;
+    }
+
+    public double getServerY() {
+        return serverY;
+    }
+
+    public double getServerZ() {
+        return serverZ;
+    }
+
+    @SubscribeEvent
+    public void onRenderWorld(RenderWorldLastEvent event) {
+        if (!isEnabled()) return;
+        if (mc.thePlayer == null || mc.theWorld == null || !serverSet) return;
+
+        double camX = mc.getRenderManager().viewerPosX;
+        double camY = mc.getRenderManager().viewerPosY;
+        double camZ = mc.getRenderManager().viewerPosZ;
+        AxisAlignedBB bb = mc.thePlayer.getEntityBoundingBox();
+
+        AxisAlignedBB serverBox = AxisAlignedBB.fromBounds(
+                bb.minX - mc.thePlayer.posX + serverX,
+                bb.minY - mc.thePlayer.posY + serverY,
+                bb.minZ - mc.thePlayer.posZ + serverZ,
+                bb.maxX - mc.thePlayer.posX + serverX,
+                bb.maxY - mc.thePlayer.posY + serverY,
+                bb.maxZ - mc.thePlayer.posZ + serverZ);
+        if (RenderUtil.pointNearBox(camX, camY, camZ, serverBox, 1.2D)) return;
+
+        int r = (Theme.ACCENT >> 16) & 0xFF;
+        int g = (Theme.ACCENT >> 8) & 0xFF;
+        int b = Theme.ACCENT & 0xFF;
+        int a = 255;
+
+        GlStateManager.disableTexture2D();
+        Tessellator tessellator = Tessellator.getInstance();
+        double pad = 0.1D;
+        AxisAlignedBB box = AxisAlignedBB.fromBounds(
+                bb.minX - mc.thePlayer.posX + serverX - camX - pad,
+                bb.minY - mc.thePlayer.posY + serverY - camY - pad,
+                bb.minZ - mc.thePlayer.posZ + serverZ - camZ - pad,
+                bb.maxX - mc.thePlayer.posX + serverX - camX + pad,
+                bb.maxY - mc.thePlayer.posY + serverY - camY + pad,
+                bb.maxZ - mc.thePlayer.posZ + serverZ - camZ + pad);
+        RenderUtil.drawOutlinedBox(tessellator, box, r, g, b, a);
+        GlStateManager.enableTexture2D();
     }
 
     private boolean enemyNear() {
@@ -156,12 +228,19 @@ public class LagRange extends Module {
     public void onEnable() {
         choking = false;
         cooldownUntil = 0L;
+        if (mc.thePlayer != null) {
+            serverX = mc.thePlayer.posX;
+            serverY = mc.thePlayer.posY;
+            serverZ = mc.thePlayer.posZ;
+            serverSet = true;
+        }
         armChannel();
     }
 
     @Override
     public void onDisable() {
         choking = false;
+        serverSet = false;
         clearPending();
         handler = null;
         final Channel channel = boundChannel;
