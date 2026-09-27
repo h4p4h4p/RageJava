@@ -50,6 +50,11 @@ public class LeftClicker extends Module {
             return;
         }
 
+        if (mc.thePlayer.isUsingItem()) {
+            lastAttackTick = mc.thePlayer.ticksExisted;
+            return;
+        }
+
         long delay = (long) delaySetting.getValue();
         if (now - pressTime < delay) return;
 
