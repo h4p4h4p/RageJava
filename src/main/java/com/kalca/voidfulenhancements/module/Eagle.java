@@ -11,6 +11,7 @@ import net.minecraft.util.MathHelper;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
+import org.lwjgl.input.Keyboard;
 
 public class Eagle extends Module {
 
@@ -48,27 +49,36 @@ public class Eagle extends Module {
     private boolean atEdge() {
         EntityPlayer player = mc.thePlayer;
         if (!player.onGround || !PlayerUtil.isMoving(player)) return false;
-        if (mc.thePlayer.movementInput.moveForward != 0 && mc.thePlayer.movementInput.moveStrafe != 0) return false;
 
-        float yaw = player.rotationYaw;
-        double dirX = -MathHelper.sin((float) Math.toRadians(yaw));
-        double dirZ = MathHelper.cos((float) Math.toRadians(yaw));
-        double d = distanceSetting.getValue();
-        double px = player.posX + dirX * d;
-        double pz = player.posZ + dirZ * d;
-        double py = player.posY - 0.05;
+        float forward = mc.thePlayer.movementInput.moveForward;
+        float strafe = mc.thePlayer.movementInput.moveStrafe;
+        if (forward == 0 && strafe == 0) return false;
 
-        BlockPos feet = new BlockPos(px, py, pz);
-        Block blockAtFeet = mc.theWorld.getBlockState(feet).getBlock();
-        if (!blockAtFeet.isAir(mc.theWorld, feet)) return false;
+        float rad = (float) Math.toRadians(player.rotationYaw);
+        double mx = forward * -MathHelper.sin(rad) + strafe * MathHelper.cos(rad);
+        double mz = forward * MathHelper.cos(rad) + strafe * MathHelper.sin(rad);
+        double len = MathHelper.sqrt_double(mx * mx + mz * mz);
+        if (len < 1.0E-4D) return false;
+        mx /= len;
+        mz /= len;
 
-        BlockPos below = feet.down();
-        Block blockBelow = mc.theWorld.getBlockState(below).getBlock();
-        return !blockBelow.isAir(mc.theWorld, below);
+        double d = distanceSetting.getValue() + 0.05D;
+        double px = player.posX + mx * d;
+        double pz = player.posZ + mz * d;
+        double py = player.posY - 0.05D;
+
+        BlockPos ahead = new BlockPos(px, py, pz);
+        Block aheadBlock = mc.theWorld.getBlockState(ahead).getBlock();
+        if (!aheadBlock.isAir(mc.theWorld, ahead)) return false;
+
+        BlockPos below = ahead.down();
+        Block belowBlock = mc.theWorld.getBlockState(below).getBlock();
+        return belowBlock.isAir(mc.theWorld, below);
     }
 
     private void setSneak(boolean state) {
         if (autoSneaking == state) return;
+        if (!state && Keyboard.isKeyDown(mc.gameSettings.keyBindSneak.getKeyCode())) return;
         autoSneaking = state;
         KeyBinding.setKeyBindState(mc.gameSettings.keyBindSneak.getKeyCode(), state);
     }
@@ -80,7 +90,8 @@ public class Eagle extends Module {
 
     @Override
     public void onDisable() {
-        setSneak(false);
+        KeyBinding.setKeyBindState(mc.gameSettings.keyBindSneak.getKeyCode(), false);
+        autoSneaking = false;
         edgeSince = -1;
     }
 }
