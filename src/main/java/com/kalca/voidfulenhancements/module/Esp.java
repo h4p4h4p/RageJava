@@ -10,7 +10,6 @@ import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.entity.Entity;
-import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.AxisAlignedBB;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.client.event.RenderLivingEvent;
@@ -22,7 +21,7 @@ import org.lwjgl.opengl.GL11;
 
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 public class Esp extends Module {
@@ -38,17 +37,29 @@ public class Esp extends Module {
     private final ColorSetting colorSetting = new ColorSetting("Color", 0xFF1B395C);
 
     private final Minecraft mc = Minecraft.getMinecraft();
-    private final List<float[]> rects = new ArrayList<>();
-    private final List<NameEntry> names = new ArrayList<>();
 
     private final float[] mv = new float[16];
     private final float[] pr = new float[16];
+    private final double[] feetScratch = new double[2];
+    private final double[] headScratch = new double[2];
     private IntBuffer viewport;
     private FloatBuffer mvBuf;
     private FloatBuffer prBuf;
     private int vw;
     private int vh;
-    private double scale;
+    private double scale = 1.0D;
+    private int lastDisplayWidth = -1;
+    private int lastDisplayHeight = -1;
+
+    private float[][] rects = new float[64][];
+    private int rectCount;
+    private float[] quadBuf = new float[512];
+    private int quadCount;
+
+    private String[] nameTexts = new String[64];
+    private float[] nameXs = new float[64];
+    private float[] nameYs = new float[64];
+    private int nameCount;
 
     public Esp() {
         super("ESP", Category.RENDER);
@@ -89,13 +100,14 @@ public class Esp extends Module {
     public void onRenderWorld(RenderWorldLastEvent event) {
         if (!isEnabled()) return;
         if (mc.thePlayer == null || mc.theWorld == null) return;
-        rects.clear();
-        names.clear();
+        rectCount = 0;
+        quadCount = 0;
+        nameCount = 0;
         if (!captureMatrices()) return;
         if (MODE_3D.equals(mode())) {
             render3D(event.partialTicks);
         } else {
-            collect2D();
+            collect2D(event.partialTicks);
         }
     }
 
@@ -103,34 +115,13 @@ public class Esp extends Module {
     public void onOverlay(RenderGameOverlayEvent.Post event) {
         if (!isEnabled()) return;
         if (event.type != RenderGameOverlayEvent.ElementType.ALL) return;
-        if (MODE_2D.equals(mode())) {
-            for (float[] r : rects) {
-                float x = r[0];
-                float y = r[1];
-                float w = r[2];
-                float h = r[3];
-                int color = colorSetting.getValue();
-                float len = Math.max(4f, Math.min(h / 6f, 10f));
-                if (cornersSetting.getValue()) {
-                    RenderUtil.drawRect(x, y, len, 1, color);
-                    RenderUtil.drawRect(x, y, 1, len, color);
-                    RenderUtil.drawRect(x + w - len, y, len, 1, color);
-                    RenderUtil.drawRect(x + w - 1, y, 1, len, color);
-                    RenderUtil.drawRect(x, y + h - 1, len, 1, color);
-                    RenderUtil.drawRect(x, y + h - len, 1, len, color);
-                    RenderUtil.drawRect(x + w - len, y + h - 1, len, 1, color);
-                    RenderUtil.drawRect(x + w - 1, y + h - len, 1, len, color);
-                } else {
-                    RenderUtil.drawRect(x, y, w, 1, color);
-                    RenderUtil.drawRect(x, y + h - 1, w, 1, color);
-                    RenderUtil.drawRect(x, y, 1, h, color);
-                    RenderUtil.drawRect(x + w - 1, y, 1, h, color);
-                }
-            }
+        if (MODE_2D.equals(mode()) && quadCount > 0) {
+            RenderUtil.drawBatchedRects(quadBuf, quadCount, colorSetting.getValue());
         }
-        if (namesSetting.getValue()) {
-            for (NameEntry entry : names) {
-                RenderUtil.drawString(entry.text, entry.x - RenderUtil.getTextWidth(entry.text) / 2f, entry.y - 9f, 0xFFFFFFFF);
+        if (nameCount > 0) {
+            for (int i = 0; i < nameCount; i++) {
+                String text = nameTexts[i];
+                RenderUtil.drawString(text, nameXs[i] - RenderUtil.getTextWidth(text) * 0.5f, nameYs[i] - 9f, 0xFFFFFFFF);
             }
         }
     }
@@ -139,7 +130,7 @@ public class Esp extends Module {
     public void onRenderName(RenderLivingEvent.Specials.Pre event) {
         if (!isEnabled()) return;
         if (!namesSetting.getValue()) return;
-        if (event.entity instanceof EntityPlayer) {
+        if (event.entity instanceof net.minecraft.entity.player.EntityPlayer) {
             event.setCanceled(true);
         }
     }
@@ -162,17 +153,24 @@ public class Esp extends Module {
         vh = viewport.get(3);
         if (vw <= 0 || vh <= 0) return false;
 
-        scale = vh / (double) new ScaledResolution(mc).getScaledHeight();
+        if (mc.displayWidth != lastDisplayWidth || mc.displayHeight != lastDisplayHeight) {
+            lastDisplayWidth = mc.displayWidth;
+            lastDisplayHeight = mc.displayHeight;
+            scale = vh / (double) new ScaledResolution(mc).getScaledHeight();
+        }
         return scale > 0;
     }
 
-    private void addName(Entity entity, AxisAlignedBB bb, double camX, double camY, double camZ) {
-        if (!namesSetting.getValue()) return;
-        double midX = (bb.minX + bb.maxX) / 2.0D;
-        double midZ = (bb.minZ + bb.maxZ) / 2.0D;
-        double[] head = toScreen(midX - camX, bb.maxY - camY, midZ - camZ, mv, pr, vw, vh);
-        if (head == null) return;
-        names.add(new NameEntry(entity.getName(), (float) (head[0] / scale), (float) ((vh - head[1]) / scale)));
+    private void storeName(String text, double screenX, double screenY) {
+        if (nameCount == nameTexts.length) {
+            nameTexts = Arrays.copyOf(nameTexts, nameCount * 2);
+            nameXs = Arrays.copyOf(nameXs, nameCount * 2);
+            nameYs = Arrays.copyOf(nameYs, nameCount * 2);
+        }
+        nameTexts[nameCount] = text;
+        nameXs[nameCount] = (float) (screenX / scale);
+        nameYs[nameCount] = (float) ((vh - screenY) / scale);
+        nameCount++;
     }
 
     private void render3D(float partialTicks) {
@@ -185,61 +183,115 @@ public class Esp extends Module {
         int g = (color >> 8) & 0xFF;
         int b = color & 0xFF;
         int a = 255;
+        boolean showNames = namesSetting.getValue();
 
         GlStateManager.disableTexture2D();
         Tessellator tessellator = Tessellator.getInstance();
-        for (Entity entity : mc.theWorld.playerEntities) {
+        List<net.minecraft.entity.player.EntityPlayer> players = mc.theWorld.playerEntities;
+        for (int i = 0; i < players.size(); i++) {
+            Entity entity = players.get(i);
             if (entity == mc.thePlayer) continue;
-            double posX = entity.lastTickPosX + (entity.posX - entity.lastTickPosX) * partialTicks;
-            double posY = entity.lastTickPosY + (entity.posY - entity.lastTickPosY) * partialTicks;
-            double posZ = entity.lastTickPosZ + (entity.posZ - entity.lastTickPosZ) * partialTicks;
             AxisAlignedBB bb = entity.getEntityBoundingBox();
 
             if (RenderUtil.pointNearBox(camX, camY, camZ, bb, NEAR_CAMERA_MARGIN)) continue;
 
-            addName(entity, bb, camX, camY, camZ);
+            double ox = entity.lastTickPosX + (entity.posX - entity.lastTickPosX) * partialTicks - entity.posX;
+            double oy = entity.lastTickPosY + (entity.posY - entity.lastTickPosY) * partialTicks - entity.posY;
+            double oz = entity.lastTickPosZ + (entity.posZ - entity.lastTickPosZ) * partialTicks - entity.posZ;
+
+            if (showNames) {
+                double midX = (bb.minX + bb.maxX) * 0.5D + ox;
+                double midZ = (bb.minZ + bb.maxZ) * 0.5D + oz;
+                if (project(midX - camX, bb.maxY + oy - camY, midZ - camZ, feetScratch)) {
+                    storeName(entity.getName(), feetScratch[0], feetScratch[1]);
+                }
+            }
 
             double pad = 0.1D;
             AxisAlignedBB box = AxisAlignedBB.fromBounds(
-                    bb.minX + posX - entity.posX - camX - pad,
-                    bb.minY + posY - entity.posY - camY - pad,
-                    bb.minZ + posZ - entity.posZ - camZ - pad,
-                    bb.maxX + posX - entity.posX - camX + pad,
-                    bb.maxY + posY - entity.posY - camY + pad,
-                    bb.maxZ + posZ - entity.posZ - camZ + pad);
+                    bb.minX + ox - camX - pad,
+                    bb.minY + oy - camY - pad,
+                    bb.minZ + oz - camZ - pad,
+                    bb.maxX + ox - camX + pad,
+                    bb.maxY + oy - camY + pad,
+                    bb.maxZ + oz - camZ + pad);
             RenderUtil.drawOutlinedBox(tessellator, box, r, g, b, a);
         }
         GlStateManager.enableTexture2D();
     }
 
-    private void collect2D() {
+    private void collect2D(float partialTicks) {
         double camX = mc.getRenderManager().viewerPosX;
         double camY = mc.getRenderManager().viewerPosY;
         double camZ = mc.getRenderManager().viewerPosZ;
+        boolean showNames = namesSetting.getValue();
 
-        for (Entity entity : mc.theWorld.playerEntities) {
+        List<net.minecraft.entity.player.EntityPlayer> players = mc.theWorld.playerEntities;
+        for (int i = 0; i < players.size(); i++) {
+            Entity entity = players.get(i);
             if (entity == mc.thePlayer) continue;
             AxisAlignedBB bb = entity.getEntityBoundingBox();
-            double midX = (bb.minX + bb.maxX) / 2.0D;
-            double midZ = (bb.minZ + bb.maxZ) / 2.0D;
 
-            double[] feet = toScreen(midX - camX, bb.minY - camY, midZ - camZ, mv, pr, vw, vh);
-            double[] head = toScreen(midX - camX, bb.maxY - camY, midZ - camZ, mv, pr, vw, vh);
-            if (feet == null || head == null) continue;
-            addName(entity, bb, camX, camY, camZ);
+            double ox = entity.lastTickPosX + (entity.posX - entity.lastTickPosX) * partialTicks - entity.posX;
+            double oy = entity.lastTickPosY + (entity.posY - entity.lastTickPosY) * partialTicks - entity.posY;
+            double oz = entity.lastTickPosZ + (entity.posZ - entity.lastTickPosZ) * partialTicks - entity.posZ;
 
-            double topDownHead = vh - head[1];
-            double topDownFeet = vh - feet[1];
+            double midX = (bb.minX + bb.maxX) * 0.5D + ox;
+            double midZ = (bb.minZ + bb.maxZ) * 0.5D + oz;
+            double minY = bb.minY + oy;
+            double maxY = bb.maxY + oy;
+
+            if (!project(midX - camX, minY - camY, midZ - camZ, feetScratch)) continue;
+            if (!project(midX - camX, maxY - camY, midZ - camZ, headScratch)) continue;
+
+            double topDownHead = vh - headScratch[1];
+            double topDownFeet = vh - feetScratch[1];
             double h = Math.abs(topDownFeet - topDownHead);
             if (h < 2.0D) continue;
             double w = h * 0.5D;
-            float x = (float) ((feet[0] - w / 2.0D) / scale);
+
+            float x = (float) ((feetScratch[0] - w * 0.5D) / scale);
             float y = (float) (topDownHead / scale);
-            rects.add(new float[]{x, y, (float) (w / scale), (float) (h / scale)});
+            float rw = (float) (w / scale);
+            float rh = (float) (h / scale);
+
+            addRect(x, y, rw, rh);
+            if (showNames) storeName(entity.getName(), headScratch[0], headScratch[1]);
         }
     }
 
-    private double[] toScreen(double x, double y, double z, float[] mv, float[] pr, int vw, int vh) {
+    private void addRect(float x, float y, float w, float h) {
+        if (quadCount + 8 > quadBuf.length) {
+            quadBuf = Arrays.copyOf(quadBuf, Math.max(quadCount + 64, quadBuf.length * 2));
+        }
+        if (cornersSetting.getValue()) {
+            float len = Math.max(4f, Math.min(h / 6f, 10f));
+            addQuad(x, y, len, 1f);
+            addQuad(x, y, 1f, len);
+            addQuad(x + w - len, y, len, 1f);
+            addQuad(x + w - 1f, y, 1f, len);
+            addQuad(x, y + h - 1f, len, 1f);
+            addQuad(x, y + h - len, 1f, len);
+            addQuad(x + w - len, y + h - 1f, len, 1f);
+            addQuad(x + w - 1f, y + h - len, 1f, len);
+        } else {
+            addQuad(x, y, w, 1f);
+            addQuad(x, y + h - 1f, w, 1f);
+            addQuad(x, y, 1f, h);
+            addQuad(x + w - 1f, y, 1f, h);
+        }
+    }
+
+    private void addQuad(float x, float y, float w, float h) {
+        int o = quadCount << 2;
+        quadBuf[o] = x;
+        quadBuf[o + 1] = y;
+        quadBuf[o + 2] = w;
+        quadBuf[o + 3] = h;
+        quadCount++;
+    }
+
+    private boolean project(double x, double y, double z, double[] out) {
         double inX = mv[0] * x + mv[4] * y + mv[8] * z + mv[12];
         double inY = mv[1] * x + mv[5] * y + mv[9] * z + mv[13];
         double inZ = mv[2] * x + mv[6] * y + mv[10] * z + mv[14];
@@ -250,15 +302,18 @@ public class Esp extends Module {
         double clipZ = pr[2] * inX + pr[6] * inY + pr[10] * inZ + pr[14] * inW;
         double clipW = pr[3] * inX + pr[7] * inY + pr[11] * inZ + pr[15] * inW;
 
-        if (clipW <= 0.0D) return null;
-        double ndcX = clipX / clipW;
-        double ndcY = clipY / clipW;
-        double ndcZ = clipZ / clipW;
-        if (ndcX < -1.5D || ndcX > 1.5D) return null;
-        if (ndcY < -1.5D || ndcY > 1.5D) return null;
-        if (ndcZ < -1.0D || ndcZ > 1.0D) return null;
+        if (clipW <= 0.0D) return false;
+        double invW = 1.0D / clipW;
+        double ndcX = clipX * invW;
+        double ndcY = clipY * invW;
+        double ndcZ = clipZ * invW;
+        if (ndcX < -1.5D || ndcX > 1.5D) return false;
+        if (ndcY < -1.5D || ndcY > 1.5D) return false;
+        if (ndcZ < -1.0D || ndcZ > 1.0D) return false;
 
-        return new double[]{(ndcX + 1.0D) * 0.5D * vw, (ndcY + 1.0D) * 0.5D * vh};
+        out[0] = (ndcX + 1.0D) * 0.5D * vw;
+        out[1] = (ndcY + 1.0D) * 0.5D * vh;
+        return true;
     }
 
     @Override
@@ -267,19 +322,8 @@ public class Esp extends Module {
 
     @Override
     public void onDisable() {
-        rects.clear();
-        names.clear();
-    }
-
-    private static class NameEntry {
-        final String text;
-        final float x;
-        final float y;
-
-        NameEntry(String text, float x, float y) {
-            this.text = text;
-            this.x = x;
-            this.y = y;
-        }
+        rectCount = 0;
+        quadCount = 0;
+        nameCount = 0;
     }
 }

@@ -54,6 +54,31 @@ public class RenderUtil {
         Gui.drawRect((int) x, (int) y, (int) (x + w), (int) (y + h), color);
     }
 
+    public static void drawBatchedRects(float[] quads, int count, int color) {
+        if (count == 0) return;
+        float a = (color >> 24 & 255) / 255.0F;
+        float r = (color >> 16 & 255) / 255.0F;
+        float g = (color >> 8 & 255) / 255.0F;
+        float b = (color & 255) / 255.0F;
+
+        Tessellator tessellator = Tessellator.getInstance();
+        WorldRenderer wr = tessellator.getWorldRenderer();
+        wr.begin(7, DefaultVertexFormats.POSITION_COLOR);
+        for (int i = 0; i < count; i++) {
+            int o = i << 2;
+            int x1 = (int) quads[o];
+            int y1 = (int) quads[o + 1];
+            int x2 = (int) (quads[o] + quads[o + 2]);
+            int y2 = (int) (quads[o + 1] + quads[o + 3]);
+            if (x1 == x2 || y1 == y2) continue;
+            wr.pos(x1, y1, 0.0D).color(r, g, b, a).endVertex();
+            wr.pos(x1, y2, 0.0D).color(r, g, b, a).endVertex();
+            wr.pos(x2, y2, 0.0D).color(r, g, b, a).endVertex();
+            wr.pos(x2, y1, 0.0D).color(r, g, b, a).endVertex();
+        }
+        tessellator.draw();
+    }
+
     public static void drawRoundedRect(float x, float y, float w, float h, float r, int color) {
         drawRect(x, y, w, h, color);
     }
