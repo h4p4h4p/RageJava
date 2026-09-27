@@ -11,7 +11,6 @@ import net.minecraft.util.MathHelper;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
-import org.lwjgl.input.Keyboard;
 
 public class Eagle extends Module {
 
@@ -78,7 +77,7 @@ public class Eagle extends Module {
 
     private void setSneak(boolean state) {
         if (autoSneaking == state) return;
-        if (!state && Keyboard.isKeyDown(mc.gameSettings.keyBindSneak.getKeyCode())) return;
+        if (!state && mc.gameSettings.keyBindSneak.isKeyDown()) return;
         autoSneaking = state;
         KeyBinding.setKeyBindState(mc.gameSettings.keyBindSneak.getKeyCode(), state);
     }

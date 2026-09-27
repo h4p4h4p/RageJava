@@ -86,7 +86,7 @@ public class VoidfulEnhancements {
         boolean guiOpen = mc.currentScreen != null;
         for (Module module : moduleManager.getModules()) {
             int key = module.getKey();
-            if (key == -1 || key >= moduleKeyStates.length) continue;
+            if (key == -1 || key < 0 || key >= moduleKeyStates.length) continue;
             boolean down = Keyboard.isKeyDown(key);
             if (!guiOpen && down && !moduleKeyStates[key]) {
                 module.toggle();
