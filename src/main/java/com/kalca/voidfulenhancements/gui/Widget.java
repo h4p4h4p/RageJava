@@ -1,6 +1,10 @@
 package com.kalca.voidfulenhancements.gui;
 
+import com.kalca.voidfulenhancements.util.RenderUtil;
+
 public abstract class Widget {
+
+    protected static final int MARKER = 0xFF33D6FF;
 
     protected float x;
     protected float y;
@@ -20,6 +24,13 @@ public abstract class Widget {
 
     public boolean contains(float mx, float my) {
         return mx >= x && mx <= x + width && my >= y && my <= y + height;
+    }
+
+    /** Small accent square after the label showing the value differs from the shipped default. */
+    protected void drawModifiedMarker(boolean modified, String name) {
+        if (!modified) return;
+        float mx = x + 8 + RenderUtil.getTextWidth(name);
+        RenderUtil.drawRect(mx, y + 6, 3, 3, MARKER);
     }
 
     public abstract void draw(float mx, float my);

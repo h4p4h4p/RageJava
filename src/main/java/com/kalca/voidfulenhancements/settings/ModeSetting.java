@@ -9,6 +9,7 @@ public class ModeSetting extends Setting {
         super(name);
         this.options = options;
         this.index = Math.max(0, Math.min(options.length - 1, defaultIndex));
+        captureDefault();
     }
 
     public String[] getOptions() {

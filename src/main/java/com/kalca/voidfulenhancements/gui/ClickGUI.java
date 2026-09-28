@@ -8,9 +8,8 @@ import com.kalca.voidfulenhancements.util.RenderUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.ScaledResolution;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.lwjgl.input.Keyboard;
+import org.lwjgl.input.Mouse;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -18,9 +17,15 @@ import java.util.List;
 
 public class ClickGUI extends GuiScreen {
 
-    private static final Logger LOGGER = LogManager.getLogger("VoidfulEnhancements");
+    private static final float PANEL_MARGIN = 12f;
+    private static final float PANEL_GAP = 6f;
+
     private final Minecraft mc = Minecraft.getMinecraft();
     private final List<Panel> panels = new ArrayList<>();
+    private final SearchField searchField = new SearchField();
+    private final List<Float> dragOffsets = new ArrayList<>();
+
+    private float maxPanelHeight = 200f;
 
     public ClickGUI() {
         for (Category category : Category.values()) {
@@ -32,14 +37,28 @@ public class ClickGUI extends GuiScreen {
         return VoidfulEnhancements.INSTANCE;
     }
 
+    public SearchField getSearchField() {
+        return searchField;
+    }
+
+    public float getMaxPanelHeight() {
+        return maxPanelHeight;
+    }
+
     @Override
     public void initGui() {
-        float x = 6;
+        layout();
+        float x = PANEL_MARGIN / 2f;
         for (Panel panel : panels) {
-            panel.setPosition(x, 6);
-            LOGGER.info("Panel {} at ({}, {}) size {}x{}", panel.getCategory().getName(), panel.getX(), panel.getY(), panel.getWidth(), panel.getHeight());
-            x += panel.getWidth() + 6;
+            panel.setPosition(x, PANEL_MARGIN / 2f);
+            x += panel.getWidth() + PANEL_GAP;
         }
+    }
+
+    private void layout() {
+        ScaledResolution sr = new ScaledResolution(mc);
+        maxPanelHeight = Math.max(60f, sr.getScaledHeight() - PANEL_MARGIN);
+        searchField.layout(sr.getScaledHeight());
     }
 
     @Override
@@ -49,16 +68,16 @@ public class ClickGUI extends GuiScreen {
         ScaledResolution sr = new ScaledResolution(mc);
         RenderUtil.drawRect(0, 0, sr.getScaledWidth(), sr.getScaledHeight(), getDimColor());
 
+        layout();
         reflow();
         for (Panel panel : panels) {
             panel.draw(mouseX, mouseY);
         }
+        searchField.draw(mouseX, mouseY);
     }
 
-    private final List<Float> dragOffsets = new ArrayList<>();
-
     private void reflow() {
-        float nx = 6;
+        float nx = PANEL_MARGIN / 2f;
         for (int i = 0; i < panels.size(); i++) {
             Panel panel = panels.get(i);
             float natural = nx;
@@ -67,7 +86,7 @@ public class ClickGUI extends GuiScreen {
                 dragOffsets.set(i, panel.getX() - natural);
                 panel.setPosition(natural + dragOffsets.get(i), panel.getY());
             }
-            nx = natural + panel.getWidth() + 6f;
+            nx = natural + panel.getWidth() + PANEL_GAP;
         }
     }
 
@@ -83,7 +102,30 @@ public class ClickGUI extends GuiScreen {
     }
 
     @Override
+    public void handleMouseInput() throws IOException {
+        super.handleMouseInput();
+        int wheel = Mouse.getEventDWheel();
+        if (wheel == 0) return;
+        int mx = Mouse.getEventX() * this.width / this.mc.displayWidth;
+        int my = this.height - Mouse.getEventY() * this.height / this.mc.displayHeight - 1;
+        for (Panel panel : panels) {
+            if (panel.isCollapsed() || !panel.contains(mx, my)) continue;
+            panel.scrollBy(-wheel * 14f);
+            return;
+        }
+    }
+
+    @Override
     protected void mouseClicked(int mouseX, int mouseY, int mouseButton) {
+        TextInput capturing = findCapturingText();
+        if (capturing != null && !capturing.hitsTextField(mouseX, mouseY)) {
+            capturing.commitTextInput();
+        }
+
+        if (searchField.onClick(mouseX, mouseY, mouseButton)) {
+            return;
+        }
+
         for (Panel panel : panels) {
             if (panel.isInHeader(mouseX, mouseY)) {
                 if (mouseButton == 0) {
@@ -97,11 +139,10 @@ public class ClickGUI extends GuiScreen {
             }
         }
 
-        boolean consumed = false;
         for (Panel panel : panels) {
             if (!panel.isCollapsed() && panel.contains(mouseX, mouseY)) {
-                consumed = panel.onClick(mouseX, mouseY, mouseButton);
-                break;
+                panel.onClick(mouseX, mouseY, mouseButton);
+                return;
             }
         }
     }
@@ -114,14 +155,36 @@ public class ClickGUI extends GuiScreen {
         getClient().saveConfig();
     }
 
+    private TextInput findCapturingText() {
+        for (Panel panel : panels) {
+            TextInput input = panel.getCapturingText();
+            if (input != null) return input;
+        }
+        return null;
+    }
+
+    private BindWidget findCapturingBind() {
+        for (Panel panel : panels) {
+            BindWidget widget = panel.getCapturingBind();
+            if (widget != null) return widget;
+        }
+        return null;
+    }
+
     @Override
     protected void keyTyped(char typedChar, int keyCode) throws IOException {
-        BindWidget capturing = null;
-        for (Panel panel : panels) {
-            capturing = panel.getCapturingBind();
-            if (capturing != null) break;
+        TextInput textInput = findCapturingText();
+        if (textInput != null) {
+            textInput.onTextKey(typedChar, keyCode);
+            return;
         }
 
+        if (searchField.isFocused()) {
+            searchField.onKey(typedChar, keyCode);
+            return;
+        }
+
+        BindWidget capturing = findCapturingBind();
         if (capturing != null) {
             if (keyCode == Keyboard.KEY_ESCAPE) {
                 capturing.cancelCapture();
@@ -154,6 +217,9 @@ public class ClickGUI extends GuiScreen {
     }
 
     public void close() {
+        TextInput textInput = findCapturingText();
+        if (textInput != null) textInput.commitTextInput();
+        searchField.unfocus();
         mc.displayGuiScreen(null);
         getClient().saveConfig();
     }

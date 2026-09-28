@@ -12,6 +12,8 @@ public class Panel {
 
     private static final float HEADER_HEIGHT = 16f;
     private static final float WIDTH = 122f;
+    private static final float SCROLLBAR_W = 3f;
+    private static final float WHEEL_STEP = 14f;
 
     private final Category category;
     private final ClickGUI gui;
@@ -20,10 +22,14 @@ public class Panel {
     private float x;
     private float y;
     private boolean collapsed;
+    private float scroll;
 
     private boolean draggingHeader;
     private float dragOffsetX;
     private float dragOffsetY;
+
+    private boolean draggingScrollbar;
+    private float scrollGrab;
 
     public Panel(Category category, ClickGUI gui) {
         this.category = category;
@@ -50,12 +56,44 @@ public class Panel {
         return y;
     }
 
+    private List<ModuleButton> visibleButtons() {
+        List<ModuleButton> out = new ArrayList<>();
+        for (ModuleButton button : buttons) {
+            if (button.matchesFilter(gui.getSearchField())) out.add(button);
+        }
+        return out;
+    }
+
+    private float contentHeight() {
+        float h = 0f;
+        for (ModuleButton button : visibleButtons()) h += button.getHeight();
+        return h;
+    }
+
+    private float viewHeight() {
+        return Math.min(contentHeight(), Math.max(0f, gui.getMaxPanelHeight() - HEADER_HEIGHT));
+    }
+
+    private float maxScroll() {
+        return Math.max(0f, contentHeight() - viewHeight());
+    }
+
+    private boolean hasScrollbar() {
+        return maxScroll() > 0f;
+    }
+
+    private float bodyWidth() {
+        return hasScrollbar() ? getWidth() - SCROLLBAR_W - 2f : getWidth();
+    }
+
     public float getWidth() {
         float w = WIDTH;
-        for (ModuleButton button : buttons) {
+        for (ModuleButton button : visibleButtons()) {
             float bw = RenderUtil.getTextWidth(button.getModule().getName());
             float bindW = button.getBindWidget() == null ? 0 : RenderUtil.getTextWidth(button.getBindWidget().keyName());
             bw += bindW + 36;
+            String tag = button.getModule().getTag();
+            if (tag != null) bw += RenderUtil.getTextWidth(tag) + 8;
             for (Widget widget : button.getWidgets()) {
                 bw = Math.max(bw, widget.getPreferredWidth() + 8);
             }
@@ -64,15 +102,12 @@ public class Panel {
             }
             w = Math.max(w, bw);
         }
+        if (hasScrollbar()) w += SCROLLBAR_W + 2f;
         return w;
     }
 
     public float getHeight() {
-        float h = HEADER_HEIGHT;
-        if (!collapsed) {
-            for (ModuleButton button : buttons) h += button.getHeight();
-        }
-        return h;
+        return HEADER_HEIGHT + (collapsed ? 0f : viewHeight());
     }
 
     public boolean isInHeader(float mx, float my) {
@@ -101,6 +136,7 @@ public class Panel {
 
     public void stopHeaderDrag() {
         draggingHeader = false;
+        draggingScrollbar = false;
     }
 
     public boolean isDragging() {
@@ -109,10 +145,21 @@ public class Panel {
 
     public void toggleCollapsed() {
         collapsed = !collapsed;
+        scroll = 0f;
     }
 
     public boolean isCollapsed() {
         return collapsed;
+    }
+
+    public void scrollBy(float amount) {
+        if (collapsed) return;
+        scroll = clampScroll(scroll + amount);
+    }
+
+    private float clampScroll(float value) {
+        float max = maxScroll();
+        return value < 0f ? 0f : (value > max ? max : value);
     }
 
     public BindWidget getCapturingBind() {
@@ -123,8 +170,22 @@ public class Panel {
         return null;
     }
 
+    public TextInput getCapturingText() {
+        for (ModuleButton button : buttons) {
+            for (Widget widget : button.getWidgets()) {
+                if (widget instanceof TextInput && ((TextInput) widget).isTextCapturing()) {
+                    return (TextInput) widget;
+                }
+            }
+        }
+        return null;
+    }
+
     public void draw(float mx, float my) {
         updateHeaderDrag(mx, my);
+        if (draggingScrollbar) updateScrollbarDrag(my);
+
+        scroll = clampScroll(scroll);
 
         float height = getHeight();
         float width = getWidth();
@@ -142,21 +203,77 @@ public class Panel {
 
         if (collapsed) return;
 
-        float by = y + HEADER_HEIGHT;
-        for (ModuleButton button : buttons) {
-            button.setPosition(x, by, width);
-            button.draw(mx, my);
-            by += button.getHeight();
+        float bodyTop = y + HEADER_HEIGHT;
+        float view = viewHeight();
+        float inner = bodyWidth();
+        float by = bodyTop - scroll;
+        for (ModuleButton button : visibleButtons()) {
+            float bh = button.getHeight();
+            if (by + bh > bodyTop && by < bodyTop + view) {
+                button.setPosition(x, by, inner);
+                button.draw(mx, my);
+            }
+            by += bh;
         }
+
+        if (hasScrollbar()) drawScrollbar(view);
+    }
+
+    private void drawScrollbar(float view) {
+        float trackTop = y + HEADER_HEIGHT;
+        RenderUtil.drawRect(x + getWidth() - SCROLLBAR_W - 1, trackTop, SCROLLBAR_W, view, 0x1AFFFFFF);
+
+        float content = contentHeight();
+        float thumbH = Math.max(18f, view * (view / content));
+        float t = maxScroll() <= 0f ? 0f : scroll / maxScroll();
+        float thumbY = trackTop + t * (view - thumbH);
+        RenderUtil.drawRect(x + getWidth() - SCROLLBAR_W - 1, thumbY, SCROLLBAR_W, thumbH, 0xAA33D6FF);
+    }
+
+    private void updateScrollbarDrag(float my) {
+        if (!Mouse.isButtonDown(0)) {
+            draggingScrollbar = false;
+            return;
+        }
+        float view = viewHeight();
+        float content = contentHeight();
+        float thumbH = Math.max(18f, view * (view / content));
+        float trackTop = y + HEADER_HEIGHT;
+        float usable = Math.max(1f, view - thumbH);
+        scroll = clampScroll((my - scrollGrab - trackTop) / usable * maxScroll());
+    }
+
+    private boolean onScrollbar(float mx, float my) {
+        if (!hasScrollbar() || collapsed) return false;
+        return mx >= x + getWidth() - SCROLLBAR_W - 4
+                && my >= y + HEADER_HEIGHT
+                && my <= y + getHeight();
     }
 
     public boolean onClick(float mx, float my, int button) {
         if (my <= y + HEADER_HEIGHT) return false;
 
-        float by = y + HEADER_HEIGHT;
-        for (ModuleButton moduleButton : buttons) {
+        if (onScrollbar(mx, my)) {
+            if (button == 0) {
+                float view = viewHeight();
+                float content = contentHeight();
+                float thumbH = Math.max(18f, view * (view / content));
+                float trackTop = y + HEADER_HEIGHT;
+                float t = Math.max(0f, Math.min(1f, (my - trackTop) / Math.max(1f, view)));
+                scroll = clampScroll(t * maxScroll());
+                draggingScrollbar = true;
+                scrollGrab = my - (trackTop + t * (view - thumbH));
+            }
+            return true;
+        }
+
+        if (mx > x + bodyWidth()) return false;
+
+        float bodyTop = y + HEADER_HEIGHT;
+        float by = bodyTop - scroll;
+        for (ModuleButton moduleButton : visibleButtons()) {
             float bh = moduleButton.getHeight();
-            if (my >= by && my <= by + bh) {
+            if (by + bh > bodyTop && my >= by && my <= by + bh) {
                 return moduleButton.onClick(mx, my, button);
             }
             by += bh;

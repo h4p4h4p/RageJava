@@ -79,9 +79,12 @@ public class ModuleButton {
     }
 
     private void refreshWidgets() {
+        SearchField search = panel.getGui().getSearchField();
         List<Setting> visible = new ArrayList<>();
         for (Setting setting : module.getSettings()) {
-            if (module.isSettingVisible(setting)) visible.add(setting);
+            if (!module.isSettingVisible(setting)) continue;
+            if (!search.matches(setting.getName())) continue;
+            visible.add(setting);
         }
         boolean same = builtSettings.size() == visible.size();
         if (same) {
@@ -116,6 +119,15 @@ public class ModuleButton {
 
     public boolean isExpanded() {
         return expanded;
+    }
+
+    /** Hidden entirely while a search is active and no setting of this module matches. */
+    public boolean matchesFilter(SearchField search) {
+        if (search == null || !search.isFiltering()) return true;
+        for (Setting setting : module.getSettings()) {
+            if (module.isSettingVisible(setting) && search.matches(setting.getName())) return true;
+        }
+        return false;
     }
 
     public BindWidget getBindWidget() {

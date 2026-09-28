@@ -7,6 +7,7 @@ public class BooleanSetting extends Setting {
     public BooleanSetting(String name, boolean value) {
         super(name);
         this.value = value;
+        captureDefault();
     }
 
     public boolean getValue() {

@@ -1,5 +1,6 @@
 package com.kalca.voidfulenhancements.gui;
 
+import com.kalca.voidfulenhancements.VoidfulEnhancements;
 import com.kalca.voidfulenhancements.settings.ColorSetting;
 import com.kalca.voidfulenhancements.util.RenderUtil;
 
@@ -14,6 +15,7 @@ public class ColorWidget extends Widget {
     @Override
     public void draw(float mx, float my) {
         RenderUtil.drawString(setting.getName(), x + 6, y + 4, Theme.TEXT_GRAY);
+        drawModifiedMarker(!setting.isDefault(), setting.getName());
 
         float sw = 26;
         float sh = 8;
@@ -21,7 +23,8 @@ public class ColorWidget extends Widget {
         float sy = y + height / 2f - sh / 2f;
 
         RenderUtil.drawRoundedRect(sx, sy, sw, sh, 2.5f, setting.getValue());
-        RenderUtil.drawString(String.format("%06X", setting.getValue() & 0xFFFFFF), sx - RenderUtil.getTextWidth(String.format("%06X", setting.getValue() & 0xFFFFFF)) - 4, y + 4, setting.getValue());
+        String hex = String.format("%06X", setting.getValue() & 0xFFFFFF);
+        RenderUtil.drawString(hex, sx - RenderUtil.getTextWidth(hex) - 4, y + 4, setting.getValue());
     }
 
     @Override
@@ -31,8 +34,16 @@ public class ColorWidget extends Widget {
 
     @Override
     public boolean onClick(float mx, float my, int button) {
-        if (button != 0 && button != 1) return false;
-        setting.cycle(button == 0);
+        if (button == 1) {
+            setting.resetToDefault();
+        } else if (button == 0) {
+            setting.cycle(true);
+        } else if (button == 2) {
+            setting.cycle(false);
+        } else {
+            return false;
+        }
+        VoidfulEnhancements.scheduleSave();
         return true;
     }
 }

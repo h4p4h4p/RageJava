@@ -1,5 +1,6 @@
 package com.kalca.voidfulenhancements.gui;
 
+import com.kalca.voidfulenhancements.VoidfulEnhancements;
 import com.kalca.voidfulenhancements.settings.BooleanSetting;
 import com.kalca.voidfulenhancements.util.RenderUtil;
 
@@ -14,6 +15,7 @@ public class BooleanWidget extends Widget {
     @Override
     public void draw(float mx, float my) {
         RenderUtil.drawString(setting.getName(), x + 6, y + 4, Theme.TEXT_GRAY);
+        drawModifiedMarker(!setting.isDefault(), setting.getName());
 
         float sw = 18;
         float sh = 7;
@@ -35,8 +37,14 @@ public class BooleanWidget extends Widget {
 
     @Override
     public boolean onClick(float mx, float my, int button) {
-        if (button != 0) return false;
-        setting.toggle();
+        if (button == 1) {
+            setting.resetToDefault();
+        } else if (button == 0) {
+            setting.toggle();
+        } else {
+            return false;
+        }
+        VoidfulEnhancements.scheduleSave();
         return true;
     }
 }

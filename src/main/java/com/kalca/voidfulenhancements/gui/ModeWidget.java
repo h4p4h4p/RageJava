@@ -21,6 +21,7 @@ public class ModeWidget extends Widget {
     public void draw(float mx, float my) {
         boolean hovered = contains(mx, my);
         RenderUtil.drawString(setting.getName(), x + 6, y + 4, Theme.TEXT_GRAY);
+        drawModifiedMarker(!setting.isDefault(), setting.getName());
 
         String value = setting.getValue();
         float vw = RenderUtil.getTextWidth(value);
@@ -29,9 +30,16 @@ public class ModeWidget extends Widget {
 
     @Override
     public boolean onClick(float mx, float my, int button) {
-        if (button != 0 && button != 1) return false;
-        int next = (setting.getIndex() + 1) % setting.getOptions().length;
-        setting.setIndex(next);
+        if (button == 1) {
+            setting.resetToDefault();
+        } else if (button == 0) {
+            setting.setIndex((setting.getIndex() + 1) % setting.getOptions().length);
+        } else if (button == 2) {
+            int len = setting.getOptions().length;
+            setting.setIndex((setting.getIndex() + len - 1) % len);
+        } else {
+            return false;
+        }
         VoidfulEnhancements.scheduleSave();
         return true;
     }

@@ -7,6 +7,7 @@ public class ColorSetting extends Setting {
     public ColorSetting(String name, int value) {
         super(name);
         this.value = value;
+        captureDefault();
     }
 
     public int getValue() {

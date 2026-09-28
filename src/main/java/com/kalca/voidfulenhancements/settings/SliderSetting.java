@@ -13,6 +13,7 @@ public class SliderSetting extends Setting {
         this.max = max;
         this.step = step;
         setValue(value);
+        captureDefault();
     }
 
     public double getValue() {

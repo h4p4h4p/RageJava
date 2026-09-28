@@ -4,14 +4,20 @@ import com.kalca.voidfulenhancements.VoidfulEnhancements;
 import com.kalca.voidfulenhancements.settings.SliderSetting;
 import com.kalca.voidfulenhancements.util.RenderUtil;
 import net.minecraft.util.MathHelper;
+import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 
-public class SliderWidget extends Widget {
+public class SliderWidget extends Widget implements TextInput {
+
+    private static final int MAX_CHARS = 9;
 
     private final SliderSetting setting;
     private float trackX;
     private float trackW;
     private boolean dragging;
+
+    private boolean capturing;
+    private final StringBuilder buffer = new StringBuilder();
 
     public SliderWidget(SliderSetting setting) {
         this.setting = setting;
@@ -41,28 +47,39 @@ public class SliderWidget extends Widget {
 
         boolean hovered = contains(mx, my);
         computeTrack();
+        float valueX = x + width - 6 - RenderUtil.getTextWidth(display());
 
-        float ty = y + height / 2f - 2f;
+        if (capturing) {
+            RenderUtil.drawRect(valueX - 3, y + 1, RenderUtil.getTextWidth(display()) + 6, height - 2, 0x40219609);
+        }
 
         RenderUtil.drawString(setting.getName(), x + 6, y + 4, hovered ? Theme.TEXT : Theme.TEXT_GRAY);
+        drawModifiedMarker(!setting.isDefault(), setting.getName());
 
         double range = setting.getMax() - setting.getMin();
         double frac = (setting.getValue() - setting.getMin()) / range;
         float fill = (float) (trackW * frac);
 
-        RenderUtil.drawRect(trackX, ty, trackW, 4, 0xFF565656);
+        RenderUtil.drawRect(trackX, y + height / 2f - 2f, trackW, 4, Theme.TRACK);
         if (fill > 0.5f) {
-            RenderUtil.drawRect(trackX, ty, Math.min(fill, trackW), 4, dragging || hovered ? 0xFF33D6FF : Theme.ACCENT);
+            RenderUtil.drawRect(trackX, y + height / 2f - 2f, Math.min(fill, trackW), 4, dragging || hovered ? MARKER : Theme.ACCENT);
         }
 
         float knobSize = 6f;
         float knobX = trackX + fill - knobSize / 2f;
         knobX = Math.max(trackX, Math.min(knobX, trackX + trackW - knobSize));
-        RenderUtil.drawRect(knobX, ty - 2, knobSize, 8, Theme.KNOB);
+        RenderUtil.drawRect(knobX, y + height / 2f - 4f, knobSize, 8, Theme.KNOB);
 
-        String value = formatValue();
-        int vw = RenderUtil.getTextWidth(value);
-        RenderUtil.drawString(value, x + width - 6 - vw, y + 4, Theme.ACCENT);
+        String value = display();
+        RenderUtil.drawString(value, valueX, y + 4, capturing ? MARKER : Theme.ACCENT);
+        if (capturing && (System.currentTimeMillis() / 450L) % 2 == 0) {
+            RenderUtil.drawRect(valueX + RenderUtil.getTextWidth(value) + 1, y + 3, 1, RenderUtil.getTextHeight(), MARKER);
+        }
+    }
+
+    private String display() {
+        if (capturing) return buffer.length() == 0 ? "..." : buffer.toString();
+        return formatValue();
     }
 
     private String formatValue() {
@@ -72,6 +89,7 @@ public class SliderWidget extends Widget {
 
     private void computeTrack() {
         float labelZone = RenderUtil.getTextWidth(setting.getName()) + 10;
+        if (!setting.isDefault()) labelZone += 7;
         trackX = x + labelZone;
         float vw = RenderUtil.getTextWidth(formatValue());
         trackW = Math.max((x + width - 12 - vw) - trackX, 4);
@@ -79,7 +97,8 @@ public class SliderWidget extends Widget {
 
     @Override
     public float getPreferredWidth() {
-        return Math.max(110, RenderUtil.getTextWidth(setting.getName()) + 10 + 48 + RenderUtil.getTextWidth(formatValue()) + 10);
+        float marker = setting.isDefault() ? 0 : 7;
+        return Math.max(110, RenderUtil.getTextWidth(setting.getName()) + marker + 10 + 48 + RenderUtil.getTextWidth(formatValue()) + 10);
     }
 
     private boolean onTrack(float mx, float my) {
@@ -89,7 +108,18 @@ public class SliderWidget extends Widget {
 
     @Override
     public boolean onClick(float mx, float my, int button) {
+        if (button == 1) {
+            setting.resetToDefault();
+            VoidfulEnhancements.scheduleSave();
+            return true;
+        }
         if (button != 0) return false;
+        if (hitsTextField(mx, my)) {
+            capturing = true;
+            dragging = false;
+            buffer.setLength(0);
+            return true;
+        }
         computeTrack();
         if (!onTrack(mx, my)) return false;
         dragging = true;
@@ -103,5 +133,65 @@ public class SliderWidget extends Widget {
         double raw = setting.getMin() + frac * range;
         double snapped = Math.round(raw / setting.getStep()) * setting.getStep();
         setting.setValue(snapped);
+    }
+
+    @Override
+    public boolean isTextCapturing() {
+        return capturing;
+    }
+
+    @Override
+    public boolean hitsTextField(float mx, float my) {
+        String shown = formatValue();
+        float vw = RenderUtil.getTextWidth(shown);
+        float vx = x + width - 6 - vw;
+        return mx >= vx - 3 && mx <= x + width - 3 && my >= y && my <= y + height;
+    }
+
+    @Override
+    public boolean onTextKey(char typedChar, int keyCode) {
+        if (!capturing) return false;
+        if (keyCode == Keyboard.KEY_ESCAPE) {
+            cancelTextInput();
+            return true;
+        }
+        if (keyCode == Keyboard.KEY_RETURN || keyCode == Keyboard.KEY_NUMPADENTER) {
+            commitTextInput();
+            return true;
+        }
+        if (keyCode == Keyboard.KEY_BACK) {
+            if (buffer.length() > 0) buffer.setLength(buffer.length() - 1);
+            return true;
+        }
+        if (isNumeric(typedChar) && buffer.length() < MAX_CHARS) {
+            buffer.append(typedChar);
+        }
+        return true;
+    }
+
+    private static boolean isNumeric(char c) {
+        return c >= '0' && c <= '9';
+    }
+
+    @Override
+    public void commitTextInput() {
+        if (!capturing) return;
+        capturing = false;
+        if (buffer.length() > 0) {
+            try {
+                double parsed = Double.parseDouble(buffer.toString());
+                double snapped = Math.round(parsed / setting.getStep()) * setting.getStep();
+                setting.setValue(snapped);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        buffer.setLength(0);
+        VoidfulEnhancements.scheduleSave();
+    }
+
+    @Override
+    public void cancelTextInput() {
+        capturing = false;
+        buffer.setLength(0);
     }
 }
