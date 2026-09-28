@@ -3,7 +3,6 @@ package com.kalca.voidfulenhancements.module;
 import com.kalca.voidfulenhancements.gui.Theme;
 import com.kalca.voidfulenhancements.settings.BooleanSetting;
 import com.kalca.voidfulenhancements.settings.ModeSetting;
-import com.kalca.voidfulenhancements.settings.Setting;
 import com.kalca.voidfulenhancements.settings.SliderSetting;
 import com.kalca.voidfulenhancements.util.RenderUtil;
 import io.netty.channel.Channel;
@@ -42,40 +41,36 @@ import java.util.Random;
  * Lag switch in the sense of Blink: the server's idea of where you are is frozen while you
  * move freely. Attacks are deliberately NOT buffered, so a hit sent during the window is
  * validated against the frozen position and then the queue is flushed afterwards.
+ *
+ * <p>Seven settings, all of which change what the module does. The safety limits that used to
+ * be sliders (queue cap, cooldown, max choke, hurt grace) are constants now, because they were
+ * never worth tuning per fight and a slider someone widens too far is a good way to get kicked.
  */
 public class LagRange extends Module {
 
     private static final String HANDLER_NAME = "voidful_lagrange";
 
-    public static final String MODE_PULSE = "Pulse";
-    public static final String MODE_LAG_BEHIND = "LagBehind";
     public static final String RENDER_BOX = "Box";
     public static final String RENDER_FAKE_PLAYER = "Fake Player";
     public static final String RENDER_TRAIL = "Trail";
 
-    private static final long LAG_BEHIND_TICK = 50L;
-    private static final double AIM_TOLERANCE = 25.0D;
+    /** Hard cap on buffered movement packets, so a missed release can never balloon the queue. */
+    private static final int MAX_QUEUE = 20;
+    /** Minimum gap between the end of one pulse and the start of the next. */
+    private static final long COOLDOWN = 250L;
+    /** A single pulse can never last longer than this, whatever the sliders say. */
+    private static final long MAX_CHOKE = 600L;
+    /** Refuse to start a pulse within this long of taking damage. */
+    private static final long HURT_GRACE = 100L;
     private static final int MAX_TRAIL = 96;
 
-    private final ModeSetting releaseModeSetting = new ModeSetting("Release Mode", new String[]{MODE_PULSE, MODE_LAG_BEHIND}, 0);
-    private final BooleanSetting smartSetting = new BooleanSetting("Smart", true);
     private final SliderSetting minRangeSetting = new SliderSetting("Min Range", 1.5D, 0.0D, 12.0D, 0.25D);
     private final SliderSetting maxRangeSetting = new SliderSetting("Max Range", 4.5D, 0.0D, 12.0D, 0.25D);
     private final SliderSetting delayMinSetting = new SliderSetting("Delay Min", 150D, 0.0D, 2000.0D, 25.0D);
     private final SliderSetting delayMaxSetting = new SliderSetting("Delay Max", 400D, 0.0D, 2000.0D, 25.0D);
     private final SliderSetting hitWindowSetting = new SliderSetting("Hit Window", 200D, 0.0D, 2000.0D, 25.0D);
-    private final SliderSetting aimDelaySetting = new SliderSetting("Aim Delay", 250D, 0.0D, 2000.0D, 25.0D);
-    private final SliderSetting maxPacketSetting = new SliderSetting("Max Packet", 20D, 1.0D, 200.0D, 1.0D);
-    private final SliderSetting cooldownSetting = new SliderSetting("Cooldown", 250D, 0.0D, 3000.0D, 25.0D);
-    private final SliderSetting maxChokeSetting = new SliderSetting("Max Choke", 600D, 0.0D, 3000.0D, 50.0D);
-    private final BooleanSetting pauseOnHitSetting = new BooleanSetting("Pause On Hit", true);
-    private final SliderSetting hurtGraceSetting = new SliderSetting("Hurt Grace", 100D, 0.0D, 1000.0D, 25.0D);
-    private final BooleanSetting pauseOnIdleSetting = new BooleanSetting("Pause On Idle", true);
-    private final BooleanSetting onlyWhenCloserSetting = new BooleanSetting("Only When Closer", true);
     private final BooleanSetting inboundSetting = new BooleanSetting("Inbound", true);
     private final ModeSetting renderModeSetting = new ModeSetting("Render Mode", new String[]{RENDER_BOX, RENDER_FAKE_PLAYER, RENDER_TRAIL}, 0);
-    private final BooleanSetting lineSetting = new BooleanSetting("Line", true);
-    private final BooleanSetting smoothSetting = new BooleanSetting("Smooth", true);
 
     private final Minecraft mc = Minecraft.getMinecraft();
     private final Random random = new Random();
@@ -109,46 +104,20 @@ public class LagRange extends Module {
 
     public LagRange() {
         super("LagRange", Category.COMBAT);
-        settings.add(releaseModeSetting);
-        settings.add(smartSetting);
         settings.add(minRangeSetting);
         settings.add(maxRangeSetting);
         settings.add(delayMinSetting);
         settings.add(delayMaxSetting);
         settings.add(hitWindowSetting);
-        settings.add(aimDelaySetting);
-        settings.add(maxPacketSetting);
-        settings.add(cooldownSetting);
-        settings.add(maxChokeSetting);
-        settings.add(pauseOnHitSetting);
-        settings.add(hurtGraceSetting);
-        settings.add(pauseOnIdleSetting);
-        settings.add(onlyWhenCloserSetting);
         settings.add(inboundSetting);
         settings.add(renderModeSetting);
-        settings.add(lineSetting);
-        settings.add(smoothSetting);
         MinecraftForge.EVENT_BUS.register(this);
-    }
-
-    @Override
-    public boolean isSettingVisible(Setting setting) {
-        if (setting == hurtGraceSetting) return pauseOnHitSetting.getValue();
-        return true;
     }
 
     @Override
     public String getTag() {
         if (!isEnabled()) return null;
-        return queueSize + " / " + (long) maxPacketSetting.getValue();
-    }
-
-    private boolean lagBehind() {
-        return MODE_LAG_BEHIND.equals(releaseModeSetting.getValue());
-    }
-
-    private String renderMode() {
-        return renderModeSetting.getValue();
+        return queueSize + " / " + MAX_QUEUE;
     }
 
     @SubscribeEvent
@@ -170,21 +139,17 @@ public class LagRange extends Module {
         if (!choking && !packetSeen) sampleServerPos();
 
         boolean inBand = shouldLag();
-        if (inBand && pauseOnIdleSetting.getValue() && !isMoving()) inBand = false;
+        if (!isMoving()) inBand = false;
 
         if (!choking) {
             if (inBand && now >= cooldownUntil) startChoke(now);
         } else {
-            boolean left = !inBand;
-            boolean capDone = maxChokeSetting.getValue() > 0.0D && now - chokeStart >= (long) maxChokeSetting.getValue();
             boolean cycleDone = now >= releaseAt;
-            boolean hitDone = attackAt != 0L && now - attackAt >= holdAfterHit();
+            boolean hitDone = attackAt != 0L
+                    && now - attackAt >= (long) hitWindowSetting.getValue();
 
-            if (left || capDone || hitDone || overflowPending || (cycleDone && !lagBehind())) {
+            if (!inBand || cycleDone || hitDone || overflowPending || now - chokeStart >= MAX_CHOKE) {
                 releaseBuffer();
-            } else if (cycleDone) {
-                releaseOne();
-                releaseAt = now + LAG_BEHIND_TICK;
             }
         }
     }
@@ -209,14 +174,6 @@ public class LagRange extends Module {
         return min + random.nextInt(max - min + 1);
     }
 
-    private long holdAfterHit() {
-        EntityPlayer target = nearestPlayer();
-        if (target != null && aimingAtServerPos(target)) {
-            return Math.max((long) hitWindowSetting.getValue(), (long) aimDelaySetting.getValue());
-        }
-        return (long) hitWindowSetting.getValue();
-    }
-
     private boolean isMoving() {
         return mc.thePlayer.moveForward != 0 || mc.thePlayer.moveStrafing != 0;
     }
@@ -232,8 +189,8 @@ public class LagRange extends Module {
 
     /**
      * The enemy is always measured from their eyes to the nearest point of the <em>server</em> box,
-     * since that is the position they are being told about. Smart adds the two gates that make the
-     * lag actually pay off: the ghost must be genuinely closer, and we must not be fresh off a hit.
+     * since that is the position they are being told about. The two gates are not optional: the
+     * ghost has to be genuinely closer, and we must not be fresh off a hit.
      */
     private boolean shouldLag() {
         EntityPlayer target = nearestPlayer();
@@ -249,20 +206,12 @@ public class LagRange extends Module {
 
         double toServer = boxDistance(target.posX, target.posY + target.getEyeHeight(), target.posZ, serverBox());
         if (toServer < min || toServer > max) return false;
-        if (!smartSetting.getValue()) return true;
 
-        if (onlyWhenCloserSetting.getValue()) {
-            double toClient = boxDistance(target.posX, target.posY + target.getEyeHeight(), target.posZ,
-                    mc.thePlayer.getEntityBoundingBox());
-            if (toServer >= toClient) return false;
-        }
+        double toClient = boxDistance(target.posX, target.posY + target.getEyeHeight(), target.posZ,
+                mc.thePlayer.getEntityBoundingBox());
+        if (toServer >= toClient) return false;
 
-        if (pauseOnHitSetting.getValue() && hurtAt != 0L
-                && System.currentTimeMillis() - hurtAt < (long) hurtGraceSetting.getValue()) {
-            return false;
-        }
-
-        return true;
+        return hurtAt == 0L || System.currentTimeMillis() - hurtAt >= HURT_GRACE;
     }
 
     private AxisAlignedBB serverBox() {
@@ -296,16 +245,6 @@ public class LagRange extends Module {
         return best;
     }
 
-    /** True when the enemy is looking at where the server thinks we are rather than where we are. */
-    private boolean aimingAtServerPos(EntityPlayer target) {
-        double clientYaw = Math.toDegrees(MathHelper.atan2(mc.thePlayer.posZ - target.posZ, mc.thePlayer.posX - target.posX)) - 90.0D;
-        double diffClient = Math.abs(MathHelper.wrapAngleTo180_float((float) clientYaw - target.rotationYaw));
-        if (diffClient <= AIM_TOLERANCE) return false;
-        double serverYawAngle = Math.toDegrees(MathHelper.atan2(serverZ - target.posZ, serverX - target.posX)) - 90.0D;
-        double diffServer = Math.abs(MathHelper.wrapAngleTo180_float((float) serverYawAngle - target.rotationYaw));
-        return diffServer < AIM_TOLERANCE;
-    }
-
     // ------------------------------------------------------------------ render
 
     @SubscribeEvent
@@ -313,21 +252,17 @@ public class LagRange extends Module {
         if (!isEnabled()) return;
         if (mc.thePlayer == null || mc.theWorld == null || !serverSet) return;
 
-        double gx = smoothSetting.getValue() ? lerpX += (serverX - lerpX) * 0.3D : serverX;
-        double gy = smoothSetting.getValue() ? lerpY += (serverY - lerpY) * 0.3D : serverY;
-        double gz = smoothSetting.getValue() ? lerpZ += (serverZ - lerpZ) * 0.3D : serverZ;
-        if (smoothSetting.getValue()) {
-            lerpYaw += MathHelper.wrapAngleTo180_float(serverYaw - lerpYaw) * 0.3F;
-        } else {
-            lerpYaw = serverYaw;
-        }
+        double gx = lerpX += (serverX - lerpX) * 0.3D;
+        double gy = lerpY += (serverY - lerpY) * 0.3D;
+        double gz = lerpZ += (serverZ - lerpZ) * 0.3D;
+        lerpYaw += MathHelper.wrapAngleTo180_float(serverYaw - lerpYaw) * 0.3F;
 
         renderGhost(gx, gy, gz, lerpYaw);
     }
 
     private void renderGhost(double gx, double gy, double gz, float yaw) {
-        String mode = renderMode();
-        if (lineSetting.getValue()) renderTrail();
+        String mode = renderModeSetting.getValue();
+        if (RENDER_TRAIL.equals(mode)) renderTrail();
         if (RENDER_FAKE_PLAYER.equals(mode)) {
             renderFakePlayer(gx, gy, gz, yaw);
             return;
@@ -454,7 +389,7 @@ public class LagRange extends Module {
         overflowPending = false;
         urgentFlush = false;
         attackAt = 0L;
-        cooldownUntil = System.currentTimeMillis() + (long) cooldownSetting.getValue();
+        cooldownUntil = System.currentTimeMillis() + COOLDOWN;
 
         List<Pending> out;
         List<Object> in;
@@ -467,23 +402,6 @@ public class LagRange extends Module {
         }
         if (out == null && in == null) return;
         dispatch(out, in);
-    }
-
-    private void releaseOne() {
-        List<Pending> single = null;
-        List<Object> in;
-        synchronized (lock) {
-            if (!pending.isEmpty()) {
-                Pending entry = pending.remove(0);
-                queueSize = pending.size();
-                single = new ArrayList<>(1);
-                single.add(entry);
-            }
-            in = inbound.isEmpty() ? null : new ArrayList<>(inbound);
-            inbound.clear();
-        }
-        if (single == null && in == null) return;
-        dispatch(single, in);
     }
 
     private void dispatch(final List<Pending> out, final List<Object> in) {
@@ -654,11 +572,10 @@ public class LagRange extends Module {
         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
             if (choking) {
                 if (msg instanceof C03PacketPlayer) {
-                    int cap = (int) maxPacketSetting.getValue();
                     synchronized (lock) {
                         pending.add(new Pending(msg, promise));
                         queueSize = pending.size();
-                        if (queueSize > cap) overflowPending = true;
+                        if (queueSize > MAX_QUEUE) overflowPending = true;
                     }
                     return;
                 }
