@@ -30,16 +30,8 @@ public class ModeWidget extends Widget {
 
     @Override
     public boolean onClick(float mx, float my, int button) {
-        if (button == 1) {
-            setting.resetToDefault();
-        } else if (button == 0) {
-            setting.setIndex((setting.getIndex() + 1) % setting.getOptions().length);
-        } else if (button == 2) {
-            int len = setting.getOptions().length;
-            setting.setIndex((setting.getIndex() + len - 1) % len);
-        } else {
-            return false;
-        }
+        if (button != 0 && button != 1) return false;
+        setting.setIndex((setting.getIndex() + 1) % setting.getOptions().length);
         VoidfulEnhancements.scheduleSave();
         return true;
     }

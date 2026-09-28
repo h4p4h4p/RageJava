@@ -37,13 +37,8 @@ public class BooleanWidget extends Widget {
 
     @Override
     public boolean onClick(float mx, float my, int button) {
-        if (button == 1) {
-            setting.resetToDefault();
-        } else if (button == 0) {
-            setting.toggle();
-        } else {
-            return false;
-        }
+        if (button != 0) return false;
+        setting.toggle();
         VoidfulEnhancements.scheduleSave();
         return true;
     }

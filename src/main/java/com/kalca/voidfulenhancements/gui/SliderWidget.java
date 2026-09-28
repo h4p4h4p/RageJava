@@ -108,11 +108,6 @@ public class SliderWidget extends Widget implements TextInput {
 
     @Override
     public boolean onClick(float mx, float my, int button) {
-        if (button == 1) {
-            setting.resetToDefault();
-            VoidfulEnhancements.scheduleSave();
-            return true;
-        }
         if (button != 0) return false;
         if (hitsTextField(mx, my)) {
             capturing = true;

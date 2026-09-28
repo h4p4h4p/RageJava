@@ -18,10 +18,6 @@ public abstract class Setting {
         return defaultConfig.equals(toConfigString());
     }
 
-    public void resetToDefault() {
-        if (!isDefault()) fromConfigString(defaultConfig);
-    }
-
     public String getName() {
         return name;
     }
