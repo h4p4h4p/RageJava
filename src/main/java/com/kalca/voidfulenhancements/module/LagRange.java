@@ -1,6 +1,9 @@
 package com.kalca.voidfulenhancements.module;
 
 import com.kalca.voidfulenhancements.gui.Theme;
+import com.kalca.voidfulenhancements.settings.BooleanSetting;
+import com.kalca.voidfulenhancements.settings.ModeSetting;
+import com.kalca.voidfulenhancements.settings.Setting;
 import com.kalca.voidfulenhancements.settings.SliderSetting;
 import com.kalca.voidfulenhancements.util.RenderUtil;
 import io.netty.channel.Channel;
@@ -12,46 +15,140 @@ import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.network.NetworkManager;
+import net.minecraft.network.Packet;
 import net.minecraft.network.play.client.C02PacketUseEntity;
 import net.minecraft.network.play.client.C03PacketPlayer;
+import net.minecraft.network.play.client.C07PacketPlayerDigging;
+import net.minecraft.network.play.client.C08PacketPlayerBlockPlacement;
+import net.minecraft.network.play.client.C0BPacketEntityAction;
+import net.minecraft.network.play.client.C0DPacketCloseWindow;
+import net.minecraft.network.play.client.C0EPacketClickWindow;
+import net.minecraft.network.play.server.S08PacketPlayerPosLook;
+import net.minecraft.network.play.server.S12PacketEntityVelocity;
+import net.minecraft.network.play.server.S27PacketExplosion;
 import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.MathHelper;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
+import org.lwjgl.opengl.GL11;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 
+/**
+ * Lag switch in the sense of Blink: the server's idea of where you are is frozen while you
+ * move freely. Attacks are deliberately NOT buffered, so a hit sent during the window is
+ * validated against the frozen position and then the queue is flushed afterwards.
+ */
 public class LagRange extends Module {
 
     private static final String HANDLER_NAME = "voidful_lagrange";
 
-    private final SliderSetting rangeSetting = new SliderSetting("Range", 4.0, 1.0, 16.0, 0.5);
-    private final SliderSetting maxChokeSetting = new SliderSetting("MaxChoke", 400, 0, 2000, 50);
-    private final SliderSetting cooldownSetting = new SliderSetting("Cooldown", 500, 0, 3000, 50);
+    public static final String MODE_PULSE = "Pulse";
+    public static final String MODE_LAG_BEHIND = "LagBehind";
+    public static final String RENDER_BOX = "Box";
+    public static final String RENDER_FAKE_PLAYER = "Fake Player";
+    public static final String RENDER_TRAIL = "Trail";
+
+    private static final long LAG_BEHIND_TICK = 50L;
+    private static final double AIM_TOLERANCE = 25.0D;
+    private static final int MAX_TRAIL = 96;
+
+    private final ModeSetting releaseModeSetting = new ModeSetting("Release Mode", new String[]{MODE_PULSE, MODE_LAG_BEHIND}, 0);
+    private final BooleanSetting smartSetting = new BooleanSetting("Smart", true);
+    private final SliderSetting minRangeSetting = new SliderSetting("Min Range", 1.5D, 0.0D, 12.0D, 0.25D);
+    private final SliderSetting maxRangeSetting = new SliderSetting("Max Range", 4.5D, 0.0D, 12.0D, 0.25D);
+    private final SliderSetting delayMinSetting = new SliderSetting("Delay Min", 150D, 0.0D, 2000.0D, 25.0D);
+    private final SliderSetting delayMaxSetting = new SliderSetting("Delay Max", 400D, 0.0D, 2000.0D, 25.0D);
+    private final SliderSetting hitWindowSetting = new SliderSetting("Hit Window", 200D, 0.0D, 2000.0D, 25.0D);
+    private final SliderSetting aimDelaySetting = new SliderSetting("Aim Delay", 250D, 0.0D, 2000.0D, 25.0D);
+    private final SliderSetting maxPacketSetting = new SliderSetting("Max Packet", 20D, 1.0D, 200.0D, 1.0D);
+    private final SliderSetting cooldownSetting = new SliderSetting("Cooldown", 250D, 0.0D, 3000.0D, 25.0D);
+    private final SliderSetting maxChokeSetting = new SliderSetting("Max Choke", 600D, 0.0D, 3000.0D, 50.0D);
+    private final BooleanSetting pauseOnHitSetting = new BooleanSetting("Pause On Hit", true);
+    private final SliderSetting hurtGraceSetting = new SliderSetting("Hurt Grace", 100D, 0.0D, 1000.0D, 25.0D);
+    private final BooleanSetting pauseOnIdleSetting = new BooleanSetting("Pause On Idle", true);
+    private final BooleanSetting onlyWhenCloserSetting = new BooleanSetting("Only When Closer", true);
+    private final BooleanSetting inboundSetting = new BooleanSetting("Inbound", true);
+    private final ModeSetting renderModeSetting = new ModeSetting("Render Mode", new String[]{RENDER_BOX, RENDER_FAKE_PLAYER, RENDER_TRAIL}, 0);
+    private final BooleanSetting lineSetting = new BooleanSetting("Line", true);
+    private final BooleanSetting smoothSetting = new BooleanSetting("Smooth", true);
 
     private final Minecraft mc = Minecraft.getMinecraft();
+    private final Random random = new Random();
     private final Object lock = new Object();
     private final List<Pending> pending = new ArrayList<>();
+    private final List<Object> inbound = new ArrayList<>();
+    private final double[] trail = new double[MAX_TRAIL * 3];
 
     private volatile boolean choking;
+    private volatile boolean overflowPending;
+    private volatile boolean urgentFlush;
+    private volatile long attackAt;
+    private volatile double serverX;
+    private volatile double serverY;
+    private volatile double serverZ;
+    private volatile float serverYaw;
+    private volatile boolean serverSet;
+    private volatile boolean packetSeen;
+    private volatile int queueSize;
+
     private LagRangeHandler handler;
     private Channel boundChannel;
     private long chokeStart;
+    private long releaseAt;
     private long cooldownUntil;
-
-    private boolean serverSet;
-    private double serverX;
-    private double serverY;
-    private double serverZ;
+    private long hurtAt;
+    private double lerpX;
+    private double lerpY;
+    private double lerpZ;
+    private float lerpYaw;
 
     public LagRange() {
         super("LagRange", Category.COMBAT);
-        settings.add(rangeSetting);
-        settings.add(maxChokeSetting);
+        settings.add(releaseModeSetting);
+        settings.add(smartSetting);
+        settings.add(minRangeSetting);
+        settings.add(maxRangeSetting);
+        settings.add(delayMinSetting);
+        settings.add(delayMaxSetting);
+        settings.add(hitWindowSetting);
+        settings.add(aimDelaySetting);
+        settings.add(maxPacketSetting);
         settings.add(cooldownSetting);
+        settings.add(maxChokeSetting);
+        settings.add(pauseOnHitSetting);
+        settings.add(hurtGraceSetting);
+        settings.add(pauseOnIdleSetting);
+        settings.add(onlyWhenCloserSetting);
+        settings.add(inboundSetting);
+        settings.add(renderModeSetting);
+        settings.add(lineSetting);
+        settings.add(smoothSetting);
         MinecraftForge.EVENT_BUS.register(this);
+    }
+
+    @Override
+    public boolean isSettingVisible(Setting setting) {
+        if (setting == hurtGraceSetting) return pauseOnHitSetting.getValue();
+        return true;
+    }
+
+    @Override
+    public String getTag() {
+        if (!isEnabled()) return null;
+        return queueSize + " / " + (long) maxPacketSetting.getValue();
+    }
+
+    private boolean lagBehind() {
+        return MODE_LAG_BEHIND.equals(releaseModeSetting.getValue());
+    }
+
+    private String renderMode() {
+        return renderModeSetting.getValue();
     }
 
     @SubscribeEvent
@@ -61,118 +158,381 @@ public class LagRange extends Module {
         if (mc.thePlayer == null || mc.theWorld == null) return;
 
         armChannel();
-        if (boundChannel == null) return;
-
         long now = System.currentTimeMillis();
+
+        if (urgentFlush) {
+            urgentFlush = false;
+            releaseBuffer();
+            return;
+        }
+
+        if (mc.thePlayer.hurtTime != 0) hurtAt = now;
+        if (!choking && !packetSeen) sampleServerPos();
+
+        boolean inBand = shouldLag();
+        if (inBand && pauseOnIdleSetting.getValue() && !isMoving()) inBand = false;
+
         if (!choking) {
-            serverX = mc.thePlayer.posX;
-            serverY = mc.thePlayer.posY;
-            serverZ = mc.thePlayer.posZ;
-            serverSet = true;
-        }
+            if (inBand && now >= cooldownUntil) startChoke(now);
+        } else {
+            boolean left = !inBand;
+            boolean capDone = maxChokeSetting.getValue() > 0.0D && now - chokeStart >= (long) maxChokeSetting.getValue();
+            boolean cycleDone = now >= releaseAt;
+            boolean hitDone = attackAt != 0L && now - attackAt >= holdAfterHit();
 
-        if (enemyNear()) {
-            if (!choking && now >= cooldownUntil) {
-                choking = true;
-                chokeStart = now;
-            } else if (choking) {
-                long max = (long) maxChokeSetting.getValue();
-                if (max > 0L && now - chokeStart >= max) {
-                    releaseBuffer(true);
-                }
+            if (left || capDone || hitDone || overflowPending || (cycleDone && !lagBehind())) {
+                releaseBuffer();
+            } else if (cycleDone) {
+                releaseOne();
+                releaseAt = now + LAG_BEHIND_TICK;
             }
-        } else if (choking) {
-            releaseBuffer(false);
         }
     }
 
-    public boolean hasServerPos() {
-        return serverSet;
+    private void startChoke(long now) {
+        choking = true;
+        chokeStart = now;
+        releaseAt = now + nextDelay();
+        attackAt = 0L;
+        overflowPending = false;
     }
 
-    public double getServerX() {
-        return serverX;
+    private long nextDelay() {
+        int min = (int) delayMinSetting.getValue();
+        int max = (int) delayMaxSetting.getValue();
+        if (max < min) {
+            int swap = min;
+            min = max;
+            max = swap;
+        }
+        if (max <= min) return min;
+        return min + random.nextInt(max - min + 1);
     }
 
-    public double getServerY() {
-        return serverY;
+    private long holdAfterHit() {
+        EntityPlayer target = nearestPlayer();
+        if (target != null && aimingAtServerPos(target)) {
+            return Math.max((long) hitWindowSetting.getValue(), (long) aimDelaySetting.getValue());
+        }
+        return (long) hitWindowSetting.getValue();
     }
 
-    public double getServerZ() {
-        return serverZ;
+    private boolean isMoving() {
+        return mc.thePlayer.moveForward != 0 || mc.thePlayer.moveStrafing != 0;
     }
 
-    @SubscribeEvent
-    public void onRenderWorld(RenderWorldLastEvent event) {
-        if (!isEnabled()) return;
-        if (mc.thePlayer == null || mc.theWorld == null || !serverSet) return;
-
-        double camX = mc.getRenderManager().viewerPosX;
-        double camY = mc.getRenderManager().viewerPosY;
-        double camZ = mc.getRenderManager().viewerPosZ;
-        AxisAlignedBB bb = mc.thePlayer.getEntityBoundingBox();
-
-        AxisAlignedBB serverBox = AxisAlignedBB.fromBounds(
-                bb.minX - mc.thePlayer.posX + serverX,
-                bb.minY - mc.thePlayer.posY + serverY,
-                bb.minZ - mc.thePlayer.posZ + serverZ,
-                bb.maxX - mc.thePlayer.posX + serverX,
-                bb.maxY - mc.thePlayer.posY + serverY,
-                bb.maxZ - mc.thePlayer.posZ + serverZ);
-        if (RenderUtil.pointNearBox(camX, camY, camZ, serverBox, 1.2D)) return;
-
-        int r = (Theme.ACCENT >> 16) & 0xFF;
-        int g = (Theme.ACCENT >> 8) & 0xFF;
-        int b = Theme.ACCENT & 0xFF;
-        int a = 255;
-
-        GlStateManager.disableTexture2D();
-        Tessellator tessellator = Tessellator.getInstance();
-        double pad = 0.1D;
-        AxisAlignedBB box = AxisAlignedBB.fromBounds(
-                bb.minX - mc.thePlayer.posX + serverX - camX - pad,
-                bb.minY - mc.thePlayer.posY + serverY - camY - pad,
-                bb.minZ - mc.thePlayer.posZ + serverZ - camZ - pad,
-                bb.maxX - mc.thePlayer.posX + serverX - camX + pad,
-                bb.maxY - mc.thePlayer.posY + serverY - camY + pad,
-                bb.maxZ - mc.thePlayer.posZ + serverZ - camZ + pad);
-        RenderUtil.drawOutlinedBox(tessellator, box, r, g, b, a);
-        GlStateManager.enableTexture2D();
+    private void sampleServerPos() {
+        if (mc.thePlayer == null) return;
+        serverX = mc.thePlayer.posX;
+        serverY = mc.thePlayer.posY;
+        serverZ = mc.thePlayer.posZ;
+        serverYaw = mc.thePlayer.rotationYaw;
+        serverSet = true;
     }
 
-    private boolean enemyNear() {
-        double range = rangeSetting.getValue();
-        double rangeSq = range * range;
+    /**
+     * The enemy is always measured from their eyes to the nearest point of the <em>server</em> box,
+     * since that is the position they are being told about. Smart adds the two gates that make the
+     * lag actually pay off: the ghost must be genuinely closer, and we must not be fresh off a hit.
+     */
+    private boolean shouldLag() {
+        EntityPlayer target = nearestPlayer();
+        if (target == null) return false;
+
+        double min = minRangeSetting.getValue();
+        double max = maxRangeSetting.getValue();
+        if (max < min) {
+            double swap = min;
+            min = max;
+            max = swap;
+        }
+
+        double toServer = boxDistance(target.posX, target.posY + target.getEyeHeight(), target.posZ, serverBox());
+        if (toServer < min || toServer > max) return false;
+        if (!smartSetting.getValue()) return true;
+
+        if (onlyWhenCloserSetting.getValue()) {
+            double toClient = boxDistance(target.posX, target.posY + target.getEyeHeight(), target.posZ,
+                    mc.thePlayer.getEntityBoundingBox());
+            if (toServer >= toClient) return false;
+        }
+
+        if (pauseOnHitSetting.getValue() && hurtAt != 0L
+                && System.currentTimeMillis() - hurtAt < (long) hurtGraceSetting.getValue()) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private AxisAlignedBB serverBox() {
+        return serverBoxOffset(serverX, serverY, serverZ);
+    }
+
+    private static double boxDistance(double px, double py, double pz, AxisAlignedBB box) {
+        double dx = Math.max(Math.max(box.minX - px, 0.0D), Math.max(px - box.maxX, 0.0D));
+        double dy = Math.max(Math.max(box.minY - py, 0.0D), Math.max(py - box.maxY, 0.0D));
+        double dz = Math.max(Math.max(box.minZ - pz, 0.0D), Math.max(pz - box.maxZ, 0.0D));
+        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    private EntityPlayer nearestPlayer() {
+        if (mc.theWorld == null || mc.thePlayer == null) return null;
         List<EntityPlayer> players = mc.theWorld.playerEntities;
+        EntityPlayer best = null;
+        double bestSq = Double.MAX_VALUE;
         for (int i = 0; i < players.size(); i++) {
             EntityPlayer other = players.get(i);
             if (other == mc.thePlayer || other.isDead) continue;
             double dx = other.posX - mc.thePlayer.posX;
             double dy = other.posY - mc.thePlayer.posY;
             double dz = other.posZ - mc.thePlayer.posZ;
-            if (dx * dx + dy * dy + dz * dz <= rangeSq) return true;
+            double sq = dx * dx + dy * dy + dz * dz;
+            if (sq < bestSq) {
+                bestSq = sq;
+                best = other;
+            }
+        }
+        return best;
+    }
+
+    /** True when the enemy is looking at where the server thinks we are rather than where we are. */
+    private boolean aimingAtServerPos(EntityPlayer target) {
+        double clientYaw = Math.toDegrees(MathHelper.atan2(mc.thePlayer.posZ - target.posZ, mc.thePlayer.posX - target.posX)) - 90.0D;
+        double diffClient = Math.abs(MathHelper.wrapAngleTo180_float((float) clientYaw - target.rotationYaw));
+        if (diffClient <= AIM_TOLERANCE) return false;
+        double serverYawAngle = Math.toDegrees(MathHelper.atan2(serverZ - target.posZ, serverX - target.posX)) - 90.0D;
+        double diffServer = Math.abs(MathHelper.wrapAngleTo180_float((float) serverYawAngle - target.rotationYaw));
+        return diffServer < AIM_TOLERANCE;
+    }
+
+    // ------------------------------------------------------------------ render
+
+    @SubscribeEvent
+    public void onRenderWorld(RenderWorldLastEvent event) {
+        if (!isEnabled()) return;
+        if (mc.thePlayer == null || mc.theWorld == null || !serverSet) return;
+
+        double gx = smoothSetting.getValue() ? lerpX += (serverX - lerpX) * 0.3D : serverX;
+        double gy = smoothSetting.getValue() ? lerpY += (serverY - lerpY) * 0.3D : serverY;
+        double gz = smoothSetting.getValue() ? lerpZ += (serverZ - lerpZ) * 0.3D : serverZ;
+        if (smoothSetting.getValue()) {
+            lerpYaw += MathHelper.wrapAngleTo180_float(serverYaw - lerpYaw) * 0.3F;
+        } else {
+            lerpYaw = serverYaw;
+        }
+
+        renderGhost(gx, gy, gz, lerpYaw);
+    }
+
+    private void renderGhost(double gx, double gy, double gz, float yaw) {
+        String mode = renderMode();
+        if (lineSetting.getValue()) renderTrail();
+        if (RENDER_FAKE_PLAYER.equals(mode)) {
+            renderFakePlayer(gx, gy, gz, yaw);
+            return;
+        }
+        renderBox(gx, gy, gz);
+    }
+
+    private void renderBox(double gx, double gy, double gz) {
+        double camX = mc.getRenderManager().viewerPosX;
+        double camY = mc.getRenderManager().viewerPosY;
+        double camZ = mc.getRenderManager().viewerPosZ;
+        AxisAlignedBB box = serverBoxOffset(gx, gy, gz);
+        if (RenderUtil.pointNearBox(camX, camY, camZ, box, 1.2D)) return;
+
+        int r = (Theme.ACCENT >> 16) & 0xFF;
+        int g = (Theme.ACCENT >> 8) & 0xFF;
+        int b = Theme.ACCENT & 0xFF;
+
+        GlStateManager.disableTexture2D();
+        double pad = 0.1D;
+        AxisAlignedBB draw = box.expand(pad, pad, pad).offset(-camX, -camY, -camZ);
+        RenderUtil.drawOutlinedBox(Tessellator.getInstance(), draw, r, g, b, 255);
+        GlStateManager.enableTexture2D();
+    }
+
+    private void renderFakePlayer(double gx, double gy, double gz, float yaw) {
+        double camX = mc.getRenderManager().viewerPosX;
+        double camY = mc.getRenderManager().viewerPosY;
+        double camZ = mc.getRenderManager().viewerPosZ;
+        if (RenderUtil.pointNearBox(camX, camY, camZ, serverBoxOffset(gx, gy, gz), 1.2D)) return;
+
+        float prevYaw = mc.thePlayer.rotationYaw;
+        float prevHead = mc.thePlayer.rotationYawHead;
+        float prevOffset = mc.thePlayer.renderYawOffset;
+        mc.thePlayer.rotationYaw = yaw;
+        mc.thePlayer.rotationYawHead = yaw;
+        mc.thePlayer.renderYawOffset = yaw;
+
+        GlStateManager.pushMatrix();
+        GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
+        try {
+            mc.getRenderManager().doRenderEntity(mc.thePlayer, gx, gy, gz, yaw, 1.0F, true);
+        } finally {
+            GL11.glPopAttrib();
+            GlStateManager.popMatrix();
+            mc.thePlayer.rotationYaw = prevYaw;
+            mc.thePlayer.rotationYawHead = prevHead;
+            mc.thePlayer.renderYawOffset = prevOffset;
+        }
+    }
+
+    private void renderTrail() {
+        int count = buildTrail();
+        if (count < 2) return;
+
+        double camX = mc.getRenderManager().viewerPosX;
+        double camY = mc.getRenderManager().viewerPosY;
+        double camZ = mc.getRenderManager().viewerPosZ;
+
+        int r = (Theme.ACCENT >> 16) & 0xFF;
+        int g = (Theme.ACCENT >> 8) & 0xFF;
+        int b = Theme.ACCENT & 0xFF;
+
+        GlStateManager.pushMatrix();
+        GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
+        GL11.glDisable(GL11.GL_TEXTURE_2D);
+        GL11.glEnable(GL11.GL_BLEND);
+        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+        GL11.glEnable(GL11.GL_LINE_SMOOTH);
+        GL11.glDisable(GL11.GL_DEPTH_TEST);
+        mc.entityRenderer.disableLightmap();
+        GL11.glLineWidth(2.0F);
+        GL11.glColor4f(r / 255.0F, g / 255.0F, b / 255.0F, 0.85F);
+        GL11.glBegin(GL11.GL_LINE_STRIP);
+        for (int i = 0; i < count; i++) {
+            int o = i * 3;
+            GL11.glVertex3d(trail[o] - camX, trail[o + 1] - camY, trail[o + 2] - camZ);
+        }
+        GL11.glEnd();
+        GL11.glEnable(GL11.GL_DEPTH_TEST);
+        GL11.glDisable(GL11.GL_LINE_SMOOTH);
+        GL11.glDisable(GL11.GL_BLEND);
+        GL11.glEnable(GL11.GL_TEXTURE_2D);
+        GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+        mc.entityRenderer.enableLightmap();
+        GL11.glPopAttrib();
+        GlStateManager.popMatrix();
+    }
+
+    private int buildTrail() {
+        int count = 0;
+        synchronized (lock) {
+            int size = pending.size();
+            for (int i = 0; i < size && count < MAX_TRAIL; i++) {
+                Object msg = pending.get(i).msg;
+                if (!(msg instanceof C03PacketPlayer)) continue;
+                C03PacketPlayer c03 = (C03PacketPlayer) msg;
+                if (!c03.isMoving()) continue;
+                int o = count * 3;
+                trail[o] = c03.getPositionX();
+                trail[o + 1] = c03.getPositionY();
+                trail[o + 2] = c03.getPositionZ();
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private AxisAlignedBB serverBoxOffset(double gx, double gy, double gz) {
+        AxisAlignedBB bb = mc.thePlayer.getEntityBoundingBox();
+        return AxisAlignedBB.fromBounds(
+                bb.minX - mc.thePlayer.posX + gx,
+                bb.minY - mc.thePlayer.posY + gy,
+                bb.minZ - mc.thePlayer.posZ + gz,
+                bb.maxX - mc.thePlayer.posX + gx,
+                bb.maxY - mc.thePlayer.posY + gy,
+                bb.maxZ - mc.thePlayer.posZ + gz);
+    }
+
+    // ------------------------------------------------------------------ buffer control
+
+    private void releaseBuffer() {
+        choking = false;
+        overflowPending = false;
+        urgentFlush = false;
+        attackAt = 0L;
+        cooldownUntil = System.currentTimeMillis() + (long) cooldownSetting.getValue();
+
+        List<Pending> out;
+        List<Object> in;
+        synchronized (lock) {
+            out = pending.isEmpty() ? null : new ArrayList<>(pending);
+            in = inbound.isEmpty() ? null : new ArrayList<>(inbound);
+            pending.clear();
+            inbound.clear();
+            queueSize = 0;
+        }
+        if (out == null && in == null) return;
+        dispatch(out, in);
+    }
+
+    private void releaseOne() {
+        List<Pending> single = null;
+        List<Object> in;
+        synchronized (lock) {
+            if (!pending.isEmpty()) {
+                Pending entry = pending.remove(0);
+                queueSize = pending.size();
+                single = new ArrayList<>(1);
+                single.add(entry);
+            }
+            in = inbound.isEmpty() ? null : new ArrayList<>(inbound);
+            inbound.clear();
+        }
+        if (single == null && in == null) return;
+        dispatch(single, in);
+    }
+
+    private void dispatch(final List<Pending> out, final List<Object> in) {
+        final LagRangeHandler current = handler;
+        final Channel channel = boundChannel;
+        if (current == null || channel == null || !channel.isActive()) {
+            if (out != null) {
+                for (int i = 0; i < out.size(); i++) out.get(i).promise.setSuccess();
+            }
+            return;
+        }
+        channel.eventLoop().execute(() -> current.flush(out, in));
+    }
+
+    private boolean holdOutbound(Object msg) {
+        if (msg instanceof C03PacketPlayer) return true;
+        if (msg instanceof C02PacketUseEntity) {
+            return ((C02PacketUseEntity) msg).getAction() != C02PacketUseEntity.Action.ATTACK;
+        }
+        return msg instanceof C07PacketPlayerDigging
+                || msg instanceof C08PacketPlayerBlockPlacement
+                || msg instanceof C0EPacketClickWindow
+                || msg instanceof C0DPacketCloseWindow;
+    }
+
+    private void trackServerPos(C03PacketPlayer c03) {
+        if (c03.isMoving()) {
+            serverX = c03.getPositionX();
+            serverY = c03.getPositionY();
+            serverZ = c03.getPositionZ();
+        }
+        if (c03.getRotating()) serverYaw = c03.getYaw();
+        serverSet = true;
+        packetSeen = true;
+    }
+
+    private boolean isCriticalInbound(Object msg) {
+        if (msg instanceof S08PacketPlayerPosLook) return true;
+        if (msg instanceof S12PacketEntityVelocity) {
+            return mc.thePlayer != null && ((S12PacketEntityVelocity) msg).getEntityID() == mc.thePlayer.getEntityId();
+        }
+        if (msg instanceof S27PacketExplosion) {
+            S27PacketExplosion packet = (S27PacketExplosion) msg;
+            return packet.func_149149_c() != 0.0F || packet.func_149144_d() != 0.0F || packet.func_149147_e() != 0.0F;
         }
         return false;
     }
 
-    private void releaseBuffer(boolean startCooldown) {
-        choking = false;
-        if (startCooldown) {
-            cooldownUntil = System.currentTimeMillis() + (long) cooldownSetting.getValue();
-        }
-
-        List<Pending> batch;
-        synchronized (lock) {
-            if (pending.isEmpty()) return;
-            batch = new ArrayList<>(pending);
-            pending.clear();
-        }
-
-        final Channel channel = boundChannel;
-        final LagRangeHandler current = handler;
-        if (channel == null || current == null || !channel.isActive()) return;
-        channel.eventLoop().execute(() -> current.release(batch));
-    }
+    // ------------------------------------------------------------------ channel plumbing
 
     private void armChannel() {
         if (mc.getNetHandler() == null) return;
@@ -184,75 +544,90 @@ public class LagRange extends Module {
         if (handler == null) {
             handler = new LagRangeHandler();
             boundChannel = channel;
-            if (channel.pipeline().get(HANDLER_NAME) == null) {
-                channel.eventLoop().execute(() -> {
-                    try {
-                        channel.pipeline().addBefore("packet_handler", HANDLER_NAME, handler);
-                    } catch (Exception ignored) {
-                    }
-                });
-            }
+            install(channel);
         } else if (boundChannel != channel) {
-            Channel previous = boundChannel;
-            channel.eventLoop().execute(() -> {
-                try {
-                    if (previous != null && previous.isActive()) previous.pipeline().remove(HANDLER_NAME);
-                } catch (Exception ignored) {
-                }
-            });
-            boundChannel = channel;
-            if (channel.pipeline().get(HANDLER_NAME) == null) {
-                channel.eventLoop().execute(() -> {
+            final Channel previous = boundChannel;
+            if (previous != null && previous.isActive()) {
+                previous.eventLoop().execute(() -> {
                     try {
-                        channel.pipeline().addBefore("packet_handler", HANDLER_NAME, handler);
+                        if (previous.pipeline().get(HANDLER_NAME) != null) previous.pipeline().remove(HANDLER_NAME);
                     } catch (Exception ignored) {
                     }
                 });
             }
+            boundChannel = channel;
+            install(channel);
         }
     }
 
-    private void clearPending() {
-        List<Pending> batch;
-        synchronized (lock) {
-            if (pending.isEmpty()) return;
-            batch = new ArrayList<>(pending);
-            pending.clear();
-        }
-        final LagRangeHandler current = handler;
-        if (current == null) return;
-        current.release(batch);
+    private void install(final Channel channel) {
+        channel.eventLoop().execute(() -> {
+            try {
+                if (channel.pipeline().get(HANDLER_NAME) == null) {
+                    channel.pipeline().addBefore("packet_handler", HANDLER_NAME, handler);
+                }
+            } catch (Exception ignored) {
+            }
+        });
     }
 
     @Override
     public void onEnable() {
         choking = false;
+        overflowPending = false;
+        urgentFlush = false;
+        attackAt = 0L;
+        hurtAt = 0L;
         cooldownUntil = 0L;
-        if (mc.thePlayer != null) {
-            serverX = mc.thePlayer.posX;
-            serverY = mc.thePlayer.posY;
-            serverZ = mc.thePlayer.posZ;
-            serverSet = true;
-        }
+        packetSeen = false;
+        queueSize = 0;
+        sampleServerPos();
+        lerpX = serverX;
+        lerpY = serverY;
+        lerpZ = serverZ;
+        lerpYaw = serverYaw;
         armChannel();
     }
 
     @Override
     public void onDisable() {
         choking = false;
+        overflowPending = false;
+        urgentFlush = false;
+        attackAt = 0L;
         serverSet = false;
-        clearPending();
+        packetSeen = false;
+        hurtAt = 0L;
+        queueSize = 0;
+
+        List<Pending> out;
+        List<Object> in;
+        synchronized (lock) {
+            out = pending.isEmpty() ? null : new ArrayList<>(pending);
+            in = inbound.isEmpty() ? null : new ArrayList<>(inbound);
+            pending.clear();
+            inbound.clear();
+        }
+
+        final LagRangeHandler current = handler;
         handler = null;
         final Channel channel = boundChannel;
         boundChannel = null;
-        if (channel != null && channel.isActive()) {
-            channel.eventLoop().execute(() -> {
-                try {
-                    if (channel.pipeline().get(HANDLER_NAME) != null) channel.pipeline().remove(HANDLER_NAME);
-                } catch (Exception ignored) {
-                }
-            });
+
+        if (current == null || channel == null || !channel.isActive()) {
+            if (out != null) {
+                for (int i = 0; i < out.size(); i++) out.get(i).promise.setSuccess();
+            }
+            return;
         }
+
+        channel.eventLoop().execute(() -> {
+            current.flush(out, in);
+            try {
+                if (channel.pipeline().get(HANDLER_NAME) != null) channel.pipeline().remove(HANDLER_NAME);
+            } catch (Exception ignored) {
+            }
+        });
     }
 
     private static class Pending {
@@ -279,31 +654,72 @@ public class LagRange extends Module {
         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
             if (choking) {
                 if (msg instanceof C03PacketPlayer) {
+                    int cap = (int) maxPacketSetting.getValue();
                     synchronized (lock) {
                         pending.add(new Pending(msg, promise));
+                        queueSize = pending.size();
+                        if (queueSize > cap) overflowPending = true;
                     }
                     return;
                 }
                 if (msg instanceof C02PacketUseEntity) {
-                    C02PacketUseEntity packet = (C02PacketUseEntity) msg;
-                    if (packet.getAction() == C02PacketUseEntity.Action.ATTACK) {
-                        synchronized (lock) {
-                            pending.add(new Pending(msg, promise));
-                        }
-                        LagRange.this.releaseBuffer(false);
+                    if (((C02PacketUseEntity) msg).getAction() == C02PacketUseEntity.Action.ATTACK) {
+                        attackAt = System.currentTimeMillis();
+                        ctx.write(msg, promise);
                         return;
                     }
                 }
+                if (msg instanceof C0BPacketEntityAction) {
+                    urgentFlush = true;
+                    ctx.write(msg, promise);
+                    return;
+                }
+                if (holdOutbound(msg)) {
+                    synchronized (lock) {
+                        pending.add(new Pending(msg, promise));
+                        queueSize = pending.size();
+                    }
+                    return;
+                }
+            } else if (msg instanceof C03PacketPlayer) {
+                trackServerPos((C03PacketPlayer) msg);
             }
             ctx.write(msg, promise);
         }
 
-        void release(List<Pending> batch) {
+        @Override
+        public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+            if (choking && inboundSetting.getValue() && msg instanceof Packet) {
+                if (isCriticalInbound(msg)) {
+                    urgentFlush = true;
+                } else {
+                    synchronized (lock) {
+                        inbound.add(msg);
+                    }
+                    return;
+                }
+            }
+            ctx.fireChannelRead(msg);
+        }
+
+        void flush(List<Pending> out, List<Object> in) {
             ChannelHandlerContext ctx = context;
-            if (ctx == null) return;
-            for (int i = 0; i < batch.size(); i++) {
-                Pending entry = batch.get(i);
-                ctx.write(entry.msg, entry.promise);
+            if (ctx == null) {
+                if (out != null) {
+                    for (int i = 0; i < out.size(); i++) out.get(i).promise.setSuccess();
+                }
+                return;
+            }
+            if (out != null) {
+                for (int i = 0; i < out.size(); i++) {
+                    Pending entry = out.get(i);
+                    ctx.write(entry.msg, entry.promise);
+                }
+            }
+            if (in != null) {
+                for (int i = 0; i < in.size(); i++) {
+                    ctx.fireChannelRead(in.get(i));
+                }
             }
             ctx.flush();
         }

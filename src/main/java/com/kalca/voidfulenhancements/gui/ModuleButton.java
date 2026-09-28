@@ -153,6 +153,13 @@ public class ModuleButton {
             RenderUtil.drawString(bind, x + width - EXPAND_ZONE - bindW - 8, y + (ROW_HEIGHT - RenderUtil.getTextHeight()) / 2f, bindColor);
         }
 
+        String tag = module.getTag();
+        if (tag != null && !tag.isEmpty()) {
+            int tagColor = module.isEnabled() ? Theme.ACCENT : Theme.TEXT_GRAY;
+            float tagX = x + width - EXPAND_ZONE - (bindWidget != null ? bindW + 8 : 0) - RenderUtil.getTextWidth(tag) - 4;
+            RenderUtil.drawString(tag, tagX, y + (ROW_HEIGHT - RenderUtil.getTextHeight()) / 2f, tagColor);
+        }
+
         RenderUtil.drawString("...", x + width - EXPAND_ZONE + 3, y + (ROW_HEIGHT - RenderUtil.getTextHeight()) / 2f, hoverExpand ? Theme.ACCENT : Theme.TEXT_GRAY);
 
         if (expanded) {

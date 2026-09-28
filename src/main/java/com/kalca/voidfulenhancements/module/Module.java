@@ -47,6 +47,11 @@ public abstract class Module {
         return true;
     }
 
+    /** Optional short status string shown on the module row, e.g. a live counter. */
+    public String getTag() {
+        return null;
+    }
+
     public List<Setting> getSettings() {
         return settings;
     }
