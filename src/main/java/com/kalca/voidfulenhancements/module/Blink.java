@@ -2,6 +2,8 @@ package com.kalca.voidfulenhancements.module;
 
 import com.kalca.voidfulenhancements.gui.Theme;
 import com.kalca.voidfulenhancements.settings.ModeSetting;
+import com.kalca.voidfulenhancements.settings.Setting;
+import com.kalca.voidfulenhancements.settings.SliderSetting;
 import com.kalca.voidfulenhancements.util.RenderUtil;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelDuplexHandler;
@@ -26,10 +28,13 @@ public class Blink extends Module {
     public static final String MODE_INBOUND = "Inbound";
     public static final String MODE_OUTBOUND = "Outbound";
     public static final String MODE_BOTH = "Both";
+    public static final String MODE_PULSE = "Pulse";
 
     private static final String HANDLER_NAME = "voidful_blink";
 
-    private final ModeSetting modeSetting = new ModeSetting("Mode", new String[]{MODE_INBOUND, MODE_OUTBOUND, MODE_BOTH}, 1);
+    private final ModeSetting modeSetting = new ModeSetting("Mode",
+            new String[]{MODE_INBOUND, MODE_OUTBOUND, MODE_BOTH, MODE_PULSE}, 1);
+    private final SliderSetting pulseDelaySetting = new SliderSetting("Pulse Delay", 500, 100, 3000, 50);
 
     private final Minecraft mc = Minecraft.getMinecraft();
     private BlinkHandler handler;
@@ -42,7 +47,14 @@ public class Blink extends Module {
     public Blink() {
         super("Blink", Category.MOVEMENT);
         settings.add(modeSetting);
+        settings.add(pulseDelaySetting);
         MinecraftForge.EVENT_BUS.register(this);
+    }
+
+    @Override
+    public boolean isSettingVisible(Setting setting) {
+        if (setting == pulseDelaySetting) return pulse();
+        return super.isSettingVisible(setting);
     }
 
     public boolean hasAnchor() {
@@ -66,6 +78,16 @@ public class Blink extends Module {
         if (event.phase != TickEvent.Phase.START) return;
         if (!isEnabled()) return;
         armChannel();
+        if (!pulse()) return;
+
+        // The whole cycle decision is handed to the event loop. Deciding it on the client thread and
+        // posting a flush would let writes slip past the buffer in between, and those writes would then
+        // reach the server *before* the older buffered positions, walking you backwards.
+        final BlinkHandler h = handler;
+        final Channel channel = boundChannel;
+        if (h == null || channel == null || !channel.isActive()) return;
+        final long delay = (long) pulseDelaySetting.getValue();
+        channel.eventLoop().execute(() -> h.pulse(delay));
     }
 
     @SubscribeEvent
@@ -114,6 +136,10 @@ public class Blink extends Module {
         return modeSetting.getValue();
     }
 
+    private boolean pulse() {
+        return MODE_PULSE.equals(mode());
+    }
+
     private void armChannel() {
         if (mc.getNetHandler() == null) return;
         NetworkManager manager = mc.getNetHandler().getNetworkManager();
@@ -151,11 +177,13 @@ public class Blink extends Module {
 
     private boolean shouldHoldInbound() {
         String m = mode();
+        if (MODE_PULSE.equals(m)) return true;
         return m.equals(MODE_INBOUND) || m.equals(MODE_BOTH);
     }
 
     private boolean shouldHoldOutbound() {
         String m = mode();
+        if (MODE_PULSE.equals(m)) return true;
         return m.equals(MODE_OUTBOUND) || m.equals(MODE_BOTH);
     }
 
@@ -168,6 +196,12 @@ public class Blink extends Module {
             anchorSet = true;
         }
         armChannel();
+        BlinkHandler h = handler;
+        Channel channel = boundChannel;
+        if (h != null && channel != null && channel.isActive()) {
+            final long delay = (long) pulseDelaySetting.getValue();
+            channel.eventLoop().execute(() -> h.rearm(delay));
+        }
     }
 
     @Override
@@ -194,10 +228,46 @@ public class Blink extends Module {
         private ChannelHandlerContext savedCtx;
         private volatile boolean flushing;
 
+        // Owned by the event loop: only mutated from pulse() and rearm(), both of which run there.
+        // A volatile read here keeps the client thread's tick from ever needing to touch it.
+        private boolean holding = true;
+        private long cycleEnd;
+
+        /** Pulse cycle boundary. Runs on the event loop, so the drain cannot race a live write. */
+        void pulse(long delay) {
+            long now = System.currentTimeMillis();
+            if (now < cycleEnd) return;
+            cycleEnd = now + delay;
+            if (holding) {
+                holding = false;
+                drain();
+            } else {
+                holding = true;
+            }
+        }
+
+        /** Re-enters the holding phase and starts a fresh cycle. Runs on the event loop. */
+        void rearm(long delay) {
+            holding = true;
+            cycleEnd = System.currentTimeMillis() + delay;
+        }
+
+        private boolean holdsInbound() {
+            String m = mode();
+            if (MODE_PULSE.equals(m)) return holding;
+            return shouldHoldInbound();
+        }
+
+        private boolean holdsOutbound() {
+            String m = mode();
+            if (MODE_PULSE.equals(m)) return holding;
+            return shouldHoldOutbound();
+        }
+
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
             savedCtx = ctx;
-            if (!flushing && shouldHoldInbound() && msg instanceof Packet) {
+            if (!flushing && holdsInbound() && msg instanceof Packet) {
                 inbound.add((Packet) msg);
                 return;
             }
@@ -207,7 +277,7 @@ public class Blink extends Module {
         @Override
         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
             savedCtx = ctx;
-            if (!flushing && shouldHoldOutbound() && msg instanceof C03PacketPlayer) {
+            if (!flushing && holdsOutbound() && msg instanceof C03PacketPlayer) {
                 outbound.add((Packet) msg);
                 promise.setSuccess();
                 return;
@@ -218,26 +288,17 @@ public class Blink extends Module {
         void flush() {
             Channel channel = boundChannel;
             if (channel == null) return;
-            channel.eventLoop().execute(() -> flushOnLoop());
+            channel.eventLoop().execute(() -> drain());
         }
 
-        private void flushOnLoop() {
+        private void drain() {
             ChannelHandlerContext ctx = savedCtx;
             if (ctx == null) return;
             flushing = true;
             try {
-                if (shouldHoldOutbound()) {
-                    while (!outbound.isEmpty()) {
-                        Packet p = outbound.poll();
-                        if (p != null) ctx.writeAndFlush(p);
-                    }
-                }
-                if (shouldHoldInbound()) {
-                    while (!inbound.isEmpty()) {
-                        Packet p = inbound.poll();
-                        if (p != null) ctx.fireChannelRead(p);
-                    }
-                }
+                Packet p;
+                while ((p = outbound.poll()) != null) ctx.writeAndFlush(p);
+                while ((p = inbound.poll()) != null) ctx.fireChannelRead(p);
             } finally {
                 flushing = false;
             }
