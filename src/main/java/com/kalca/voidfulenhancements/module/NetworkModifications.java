@@ -23,29 +23,29 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 
 import java.util.ArrayDeque;
 
-public class Blink extends Module {
+public class NetworkModifications extends Module {
 
     public static final String MODE_INBOUND = "Inbound";
     public static final String MODE_OUTBOUND = "Outbound";
     public static final String MODE_BOTH = "Both";
     public static final String MODE_PULSE = "Pulse";
 
-    private static final String HANDLER_NAME = "voidful_blink";
+    private static final String HANDLER_NAME = "voidful_network_modifications";
 
     private final ModeSetting modeSetting = new ModeSetting("Mode",
             new String[]{MODE_INBOUND, MODE_OUTBOUND, MODE_BOTH, MODE_PULSE}, 1);
     private final SliderSetting pulseDelaySetting = new SliderSetting("Pulse Delay", 500, 100, 3000, 50);
 
     private final Minecraft mc = Minecraft.getMinecraft();
-    private BlinkHandler handler;
+    private NetworkHandler handler;
     private Channel boundChannel;
     private boolean anchorSet;
     private double anchorX;
     private double anchorY;
     private double anchorZ;
 
-    public Blink() {
-        super("Blink", Category.MOVEMENT);
+    public NetworkModifications() {
+        super("NetworkModifications", Category.MOVEMENT);
         settings.add(modeSetting);
         settings.add(pulseDelaySetting);
         MinecraftForge.EVENT_BUS.register(this);
@@ -83,7 +83,7 @@ public class Blink extends Module {
         // The whole cycle decision is handed to the event loop. Deciding it on the client thread and
         // posting a flush would let writes slip past the buffer in between, and those writes would then
         // reach the server *before* the older buffered positions, walking you backwards.
-        final BlinkHandler h = handler;
+        final NetworkHandler h = handler;
         final Channel channel = boundChannel;
         if (h == null || channel == null || !channel.isActive()) return;
         final long delay = (long) pulseDelaySetting.getValue();
@@ -148,7 +148,7 @@ public class Blink extends Module {
         if (channel == null || !channel.isActive()) return;
 
         if (handler == null) {
-            handler = new BlinkHandler();
+            handler = new NetworkHandler();
             boundChannel = channel;
             if (channel.pipeline().get(HANDLER_NAME) == null) {
                 channel.eventLoop().execute(() -> {
@@ -196,7 +196,7 @@ public class Blink extends Module {
             anchorSet = true;
         }
         armChannel();
-        BlinkHandler h = handler;
+        NetworkHandler h = handler;
         Channel channel = boundChannel;
         if (h != null && channel != null && channel.isActive()) {
             final long delay = (long) pulseDelaySetting.getValue();
@@ -206,7 +206,7 @@ public class Blink extends Module {
 
     @Override
     public void onDisable() {
-        BlinkHandler h = handler;
+        NetworkHandler h = handler;
         handler = null;
         if (h != null) h.flush();
         Channel channel = boundChannel;
@@ -221,7 +221,7 @@ public class Blink extends Module {
         }
     }
 
-    private class BlinkHandler extends ChannelDuplexHandler {
+    private class NetworkHandler extends ChannelDuplexHandler {
 
         private final ArrayDeque<Packet> inbound = new ArrayDeque<>();
         private final ArrayDeque<Packet> outbound = new ArrayDeque<>();

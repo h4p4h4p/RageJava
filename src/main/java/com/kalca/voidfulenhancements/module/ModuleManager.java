@@ -10,7 +10,7 @@ public class ModuleManager {
     public ModuleManager() {
         modules.add(new Speed());
         modules.add(new Eagle());
-        modules.add(new Blink());
+        modules.add(new NetworkModifications());
         modules.add(new LeftClicker());
         modules.add(new DelayRemover());
         modules.add(new BlockHit());
