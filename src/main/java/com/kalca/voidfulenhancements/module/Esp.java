@@ -30,6 +30,7 @@ public class Esp extends Module {
     public static final String MODE_3D = "3D";
 
     private static final double NEAR_CAMERA_MARGIN = 1.2D;
+    private static final int MAX_QUADS = 16384;
 
     private final ModeSetting modeSetting = new ModeSetting("Mode", new String[]{MODE_2D, MODE_3D}, 0);
     private final BooleanSetting cornersSetting = new BooleanSetting("Corners", false);
@@ -51,8 +52,6 @@ public class Esp extends Module {
     private int lastDisplayWidth = -1;
     private int lastDisplayHeight = -1;
 
-    private float[][] rects = new float[64][];
-    private int rectCount;
     private float[] quadBuf = new float[512];
     private int quadCount;
 
@@ -100,7 +99,6 @@ public class Esp extends Module {
     public void onRenderWorld(RenderWorldLastEvent event) {
         if (!isEnabled()) return;
         if (mc.thePlayer == null || mc.theWorld == null) return;
-        rectCount = 0;
         quadCount = 0;
         nameCount = 0;
         if (!captureMatrices()) return;
@@ -261,9 +259,7 @@ public class Esp extends Module {
     }
 
     private void addRect(float x, float y, float w, float h) {
-        if (quadCount + 8 > quadBuf.length) {
-            quadBuf = Arrays.copyOf(quadBuf, Math.max(quadCount + 64, quadBuf.length * 2));
-        }
+        if (!ensureQuadRoom(8)) return;
         if (cornersSetting.getValue()) {
             float len = Math.max(4f, Math.min(h / 6f, 10f));
             addQuad(x, y, len, 1f);
@@ -280,6 +276,22 @@ public class Esp extends Module {
             addQuad(x, y, 1f, h);
             addQuad(x + w - 1f, y, 1f, h);
         }
+    }
+
+    /**
+     * quadBuf holds four floats per quad, so capacity has to be reasoned about in floats.
+     * The old guard compared a quad count against the array length and let addQuad run off
+     * the end once 128 quads were queued, which any server with 33 visible entities hits.
+     * Bounded at MAX_QUADS so a pathological entity count drops quads instead of
+     * allocating its way into an OutOfMemoryError mid-frame.
+     */
+    private boolean ensureQuadRoom(int quads) {
+        if ((quadCount + quads) * 4 > quadBuf.length) {
+            int needed = (quadCount + quads) * 4;
+            if (needed > MAX_QUADS * 4) return false;
+            quadBuf = Arrays.copyOf(quadBuf, Math.max(needed, quadBuf.length * 2));
+        }
+        return true;
     }
 
     private void addQuad(float x, float y, float w, float h) {
@@ -322,7 +334,6 @@ public class Esp extends Module {
 
     @Override
     public void onDisable() {
-        rectCount = 0;
         quadCount = 0;
         nameCount = 0;
     }
