@@ -7,8 +7,8 @@ import java.util.Locale;
 
 /**
  * Floating filter for the module list. Typing hides every setting that does not match, and any
- * module left without a matching setting disappears too, so a large module like LagRange stays
- * navigable without scrolling past eighteen rows.
+ * module left without a matching setting disappears too, so modules with a lot of settings stay
+ * navigable without scrolling past every row.
  */
 public class SearchField {
 
