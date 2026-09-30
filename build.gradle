@@ -15,8 +15,8 @@ apply plugin: "java"
 apply plugin: "net.minecraftforge.gradle.forge"
 
 version = "0.3"
-group = "com.kalca.voidfulenhancements"
-archivesBaseName = "voidfulenhancements"
+group = "com.kalca.ragejava"
+archivesBaseName = "ragejava"
 
 sourceCompatibility = targetCompatibility = JavaVersion.VERSION_1_8
 compileJava.options.encoding = "UTF-8"
