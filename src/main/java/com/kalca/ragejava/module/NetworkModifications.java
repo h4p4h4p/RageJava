@@ -34,6 +34,8 @@ public class NetworkModifications extends Module {
 
     private final ModeSetting modeSetting = new ModeSetting("Mode",
             new String[]{MODE_INBOUND, MODE_OUTBOUND, MODE_BOTH, MODE_PULSE}, ModeSetting.UNSET);
+    private final ModeSetting pulseDirectionSetting = new ModeSetting("Pulse Direction",
+            new String[]{MODE_OUTBOUND, MODE_INBOUND, MODE_BOTH}, 2);
     private final SliderSetting pulseDelaySetting = new SliderSetting("Pulse Delay", 500, 100, 3000, 50);
 
     private final Minecraft mc = Minecraft.getMinecraft();
@@ -47,6 +49,7 @@ public class NetworkModifications extends Module {
     public NetworkModifications() {
         super("NetworkModifications", Category.MOVEMENT);
         settings.add(modeSetting);
+        settings.add(pulseDirectionSetting);
         settings.add(pulseDelaySetting);
         MinecraftForge.EVENT_BUS.register(this);
     }
@@ -54,6 +57,7 @@ public class NetworkModifications extends Module {
     @Override
     public boolean isSettingVisible(Setting setting) {
         if (setting == pulseDelaySetting) return pulse();
+        if (setting == pulseDirectionSetting) return pulse();
         return super.isSettingVisible(setting);
     }
 
@@ -252,15 +256,25 @@ public class NetworkModifications extends Module {
             cycleEnd = System.currentTimeMillis() + delay;
         }
 
+        private boolean pulseHoldsInbound() {
+            String d = pulseDirectionSetting.getValue();
+            return MODE_BOTH.equals(d) || MODE_INBOUND.equals(d);
+        }
+
+        private boolean pulseHoldsOutbound() {
+            String d = pulseDirectionSetting.getValue();
+            return MODE_BOTH.equals(d) || MODE_OUTBOUND.equals(d);
+        }
+
         private boolean holdsInbound() {
             String m = mode();
-            if (MODE_PULSE.equals(m)) return holding;
+            if (MODE_PULSE.equals(m)) return holding && pulseHoldsInbound();
             return shouldHoldInbound();
         }
 
         private boolean holdsOutbound() {
             String m = mode();
-            if (MODE_PULSE.equals(m)) return holding;
+            if (MODE_PULSE.equals(m)) return holding && pulseHoldsOutbound();
             return shouldHoldOutbound();
         }
 
