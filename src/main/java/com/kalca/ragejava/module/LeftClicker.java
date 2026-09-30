@@ -1,7 +1,9 @@
 package com.kalca.ragejava.module;
 
+import com.kalca.ragejava.settings.ModeSetting;
 import com.kalca.ragejava.settings.SliderSetting;
 import net.minecraft.client.Minecraft;
+import net.minecraft.entity.Entity;
 import net.minecraft.util.MovingObjectPosition;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
@@ -10,6 +12,10 @@ import org.lwjgl.input.Mouse;
 
 public class LeftClicker extends Module {
 
+    public static final String MODE_NORMAL = "Normal";
+    public static final String MODE_TRIGGER = "Trigger";
+
+    private final ModeSetting modeSetting = new ModeSetting("Mode", new String[]{MODE_NORMAL, MODE_TRIGGER}, 0);
     private final SliderSetting delaySetting = new SliderSetting("Delay", 100, 0, 1000, 10);
     private final SliderSetting cpsSetting = new SliderSetting("CPS", 12, 1, 60, 1);
     private final SliderSetting randomSetting = new SliderSetting("Randomization", 0, 0, 100, 5);
@@ -21,6 +27,7 @@ public class LeftClicker extends Module {
 
     public LeftClicker() {
         super("LeftClicker", Category.COMBAT);
+        settings.add(modeSetting);
         settings.add(delaySetting);
         settings.add(cpsSetting);
         settings.add(randomSetting);
@@ -71,7 +78,15 @@ public class LeftClicker extends Module {
         return 1.0 + (Math.random() * 2.0 - 1.0) * (randomSetting.getValue() / 100.0);
     }
 
+    private boolean triggerMode() {
+        return MODE_TRIGGER.equals(modeSetting.getValue());
+    }
+
     private void click() {
+        if (triggerMode()) {
+            clickEntityOnly();
+            return;
+        }
         MovingObjectPosition over = mc.objectMouseOver;
         if (over != null && over.typeOfHit == MovingObjectPosition.MovingObjectType.ENTITY && over.entityHit != null) {
             mc.thePlayer.swingItem();
@@ -82,6 +97,16 @@ public class LeftClicker extends Module {
                 mc.playerController.onPlayerDamageBlock(over.getBlockPos(), over.sideHit);
             }
         }
+    }
+
+    private void clickEntityOnly() {
+        MovingObjectPosition over = mc.objectMouseOver;
+        if (over == null) return;
+        if (over.typeOfHit != MovingObjectPosition.MovingObjectType.ENTITY) return;
+        Entity target = over.entityHit;
+        if (target == null) return;
+        mc.thePlayer.swingItem();
+        mc.playerController.attackEntity(mc.thePlayer, target);
     }
 
     private void reset() {
