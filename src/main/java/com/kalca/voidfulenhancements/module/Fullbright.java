@@ -18,7 +18,7 @@ public class Fullbright extends Module {
     public static final String MODE_GAMMA = "Gamma";
     public static final String MODE_LIGHT = "Light";
 
-    private final ModeSetting modeSetting = new ModeSetting("Mode", new String[]{MODE_GAMMA, MODE_LIGHT}, 0);
+    private final ModeSetting modeSetting = new ModeSetting("Mode", new String[]{MODE_GAMMA, MODE_LIGHT}, ModeSetting.UNSET);
     private final SliderSetting gammaSetting = new SliderSetting("Gamma", 100, 0.5, 100, 0.5);
 
     private final Minecraft mc = Minecraft.getMinecraft();

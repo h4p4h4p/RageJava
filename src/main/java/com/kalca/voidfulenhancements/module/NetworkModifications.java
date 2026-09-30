@@ -33,7 +33,7 @@ public class NetworkModifications extends Module {
     private static final String HANDLER_NAME = "voidful_network_modifications";
 
     private final ModeSetting modeSetting = new ModeSetting("Mode",
-            new String[]{MODE_INBOUND, MODE_OUTBOUND, MODE_BOTH, MODE_PULSE}, 1);
+            new String[]{MODE_INBOUND, MODE_OUTBOUND, MODE_BOTH, MODE_PULSE}, ModeSetting.UNSET);
     private final SliderSetting pulseDelaySetting = new SliderSetting("Pulse Delay", 500, 100, 3000, 50);
 
     private final Minecraft mc = Minecraft.getMinecraft();

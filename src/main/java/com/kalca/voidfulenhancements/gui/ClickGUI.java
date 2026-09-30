@@ -73,6 +73,8 @@ public class ClickGUI extends GuiScreen {
         for (Panel panel : panels) {
             panel.draw(mouseX, mouseY);
         }
+        // After every panel, so an open mode list is not painted over by the settings below it.
+        ModeWidget.drawOpenPopup(mouseX, mouseY, sr.getScaledHeight() - 4f);
         searchField.draw(mouseX, mouseY);
     }
 
@@ -120,6 +122,12 @@ public class ClickGUI extends GuiScreen {
         TextInput capturing = findCapturingText();
         if (capturing != null && !capturing.hitsTextField(mouseX, mouseY)) {
             capturing.commitTextInput();
+        }
+
+        // A mode list swallows every click while it is open: pick, or dismiss without
+        // letting the click through to the module row and toggle it.
+        if (ModeWidget.handleOpenPopupClick(mouseX, mouseY, mouseButton)) {
+            return;
         }
 
         if (searchField.onClick(mouseX, mouseY, mouseButton)) {
@@ -173,6 +181,11 @@ public class ClickGUI extends GuiScreen {
 
     @Override
     protected void keyTyped(char typedChar, int keyCode) throws IOException {
+        if (keyCode == Keyboard.KEY_ESCAPE && ModeWidget.isOpen()) {
+            ModeWidget.closeOpen();
+            return;
+        }
+
         TextInput textInput = findCapturingText();
         if (textInput != null) {
             textInput.onTextKey(typedChar, keyCode);

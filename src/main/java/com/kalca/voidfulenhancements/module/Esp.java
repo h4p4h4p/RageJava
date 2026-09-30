@@ -32,10 +32,11 @@ public class Esp extends Module {
     private static final double NEAR_CAMERA_MARGIN = 1.2D;
     private static final int MAX_QUADS = 16384;
 
-    private final ModeSetting modeSetting = new ModeSetting("Mode", new String[]{MODE_2D, MODE_3D}, 0);
+    private final ModeSetting modeSetting = new ModeSetting("Mode", new String[]{MODE_2D, MODE_3D}, ModeSetting.UNSET);
     private final BooleanSetting cornersSetting = new BooleanSetting("Corners", false);
     private final BooleanSetting namesSetting = new BooleanSetting("Names", true);
     private final ColorSetting colorSetting = new ColorSetting("Color", 0xFF1B395C);
+    private final ColorSetting nameColorSetting = new ColorSetting("Name Color", 0xFFFFFFFF);
 
     private final Minecraft mc = Minecraft.getMinecraft();
 
@@ -66,12 +67,14 @@ public class Esp extends Module {
         settings.add(cornersSetting);
         settings.add(namesSetting);
         settings.add(colorSetting);
+        settings.add(nameColorSetting);
         MinecraftForge.EVENT_BUS.register(this);
     }
 
     @Override
     public boolean isSettingVisible(Setting setting) {
         if (setting == cornersSetting) return MODE_2D.equals(mode());
+        if (setting == nameColorSetting) return namesSetting.getValue();
         return true;
     }
 
@@ -85,6 +88,10 @@ public class Esp extends Module {
 
     public int getPreviewColor() {
         return colorSetting.getValue();
+    }
+
+    public int getPreviewNameColor() {
+        return nameColorSetting.getValue();
     }
 
     public boolean getPreviewCorners() {
@@ -102,6 +109,7 @@ public class Esp extends Module {
         quadCount = 0;
         nameCount = 0;
         if (!captureMatrices()) return;
+        if (modeSetting.isUnset()) return;
         if (MODE_3D.equals(mode())) {
             render3D(event.partialTicks);
         } else {
@@ -117,9 +125,10 @@ public class Esp extends Module {
             RenderUtil.drawBatchedRects(quadBuf, quadCount, colorSetting.getValue());
         }
         if (nameCount > 0) {
+            int nameColor = nameColorSetting.getValue();
             for (int i = 0; i < nameCount; i++) {
                 String text = nameTexts[i];
-                RenderUtil.drawString(text, nameXs[i] - RenderUtil.getTextWidth(text) * 0.5f, nameYs[i] - 9f, 0xFFFFFFFF);
+                RenderUtil.drawString(text, nameXs[i] - RenderUtil.getTextWidth(text) * 0.5f, nameYs[i] - 9f, nameColor);
             }
         }
     }
@@ -165,7 +174,7 @@ public class Esp extends Module {
             nameXs = Arrays.copyOf(nameXs, nameCount * 2);
             nameYs = Arrays.copyOf(nameYs, nameCount * 2);
         }
-        nameTexts[nameCount] = text;
+        nameTexts[nameCount] = "[" + text + "]";
         nameXs[nameCount] = (float) (screenX / scale);
         nameYs[nameCount] = (float) ((vh - screenY) / scale);
         nameCount++;

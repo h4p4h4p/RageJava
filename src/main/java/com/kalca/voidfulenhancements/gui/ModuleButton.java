@@ -270,8 +270,8 @@ public class ModuleButton {
             }
         }
         if (esp.getPreviewNames()) {
-            String name = "Steve";
-            RenderUtil.drawString(name, cx - RenderUtil.getTextWidth(name) / 2f, top - 11f, 0xFFFFFFFF);
+            String name = "[Steve]";
+            RenderUtil.drawString(name, cx - RenderUtil.getTextWidth(name) / 2f, top - 11f, esp.getPreviewNameColor());
         }
     }
 

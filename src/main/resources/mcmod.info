@@ -9,7 +9,7 @@
     "updateUrl": "",
     "authorList": ["kalca"],
     "credits": "",
-    "logoFile": "/assets/voidfulenhancements/textures/gui/logo.png",
+    "logoFile": "assets/voidfulenhancements/textures/gui/logo.png",
     "screenshots": [],
     "dependencies": []
   }
