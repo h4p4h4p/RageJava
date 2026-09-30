@@ -3,10 +3,12 @@ package com.kalca.ragejava.util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.Gui;
+import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.WorldRenderer;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import net.minecraft.util.AxisAlignedBB;
+import org.lwjgl.opengl.GL11;
 
 public class RenderUtil {
 
@@ -61,6 +63,10 @@ public class RenderUtil {
         float g = (color >> 8 & 255) / 255.0F;
         float b = (color & 255) / 255.0F;
 
+        GlStateManager.enableBlend();
+        GlStateManager.disableTexture2D();
+        GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, 1, 0);
+
         Tessellator tessellator = Tessellator.getInstance();
         WorldRenderer wr = tessellator.getWorldRenderer();
         wr.begin(7, DefaultVertexFormats.POSITION_COLOR);
@@ -77,6 +83,9 @@ public class RenderUtil {
             wr.pos(x2, y1, 0.0D).color(r, g, b, a).endVertex();
         }
         tessellator.draw();
+
+        GlStateManager.enableTexture2D();
+        GlStateManager.disableBlend();
     }
 
     public static void drawRoundedRect(float x, float y, float w, float h, float r, int color) {
