@@ -13,6 +13,7 @@ public class ModuleManager {
         modules.add(new Eagle());
         modules.add(new NetworkModifications());
         modules.add(new LeftClicker());
+        modules.add(new AimAssist());
         modules.add(new DelayRemover());
         modules.add(new BlockHit());
         modules.add(new RightClicker());
