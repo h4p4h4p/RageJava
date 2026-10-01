@@ -27,6 +27,11 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
  * Every frame it picks the entity with the smallest angular offset from the
  * crosshair that sits inside the FOV cone on both axes, then eases the current
  * yaw/pitch toward it by (smooth% * sensitivity) rather than snapping.
+ *
+ * With Hold Attack on, the assist only rotates while the attack key is held -
+ * hold LMB to engage, release to disengage, so simply walking around leaves your
+ * view alone. The FOV circle is not gated by it, so the ring stays put as a
+ * tuning aid instead of blinking with the key.
  */
 public class AimAssist extends Module {
 
@@ -36,6 +41,7 @@ public class AimAssist extends Module {
     private final SliderSetting fovSetting = new SliderSetting("FOV", 45, 1, 180, 1);
     private final BooleanSetting showFovCircleSetting = new BooleanSetting("Show FOV Circle", false);
     private final ColorSetting circleColorSetting = new ColorSetting("Circle Color", 0xFF1B395C);
+    private final BooleanSetting holdAttackSetting = new BooleanSetting("Hold Attack", false);
 
     private final Minecraft mc = Minecraft.getMinecraft();
 
@@ -47,6 +53,7 @@ public class AimAssist extends Module {
         settings.add(fovSetting);
         settings.add(showFovCircleSetting);
         settings.add(circleColorSetting);
+        settings.add(holdAttackSetting);
         MinecraftForge.EVENT_BUS.register(this);
     }
 
@@ -60,6 +67,7 @@ public class AimAssist extends Module {
     public void onRenderWorld(RenderWorldLastEvent event) {
         if (!isEnabled()) return;
         if (mc.thePlayer == null || mc.theWorld == null || mc.currentScreen != null) return;
+        if (holdAttackSetting.getValue() && !mc.gameSettings.keyBindAttack.isKeyDown()) return;
 
         float curYaw = mc.thePlayer.rotationYaw;
         float curPitch = mc.thePlayer.rotationPitch;
