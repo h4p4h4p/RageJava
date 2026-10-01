@@ -27,7 +27,7 @@ public class AimAssist extends Module {
     private final SliderSetting xSmoothSetting = new SliderSetting("X Smooth", 30, 0, 100, 1);
     private final SliderSetting ySmoothSetting = new SliderSetting("Y Smooth", 30, 0, 100, 1);
     private final SliderSetting sensitivitySetting = new SliderSetting("Sensitivity", 1.0, 0.1, 3.0, 0.05);
-    private final SliderSetting fovSetting = new SliderSetting("FOV", 90, 1, 180, 1);
+    private final SliderSetting fovSetting = new SliderSetting("FOV", 45, 1, 180, 1);
 
     private final Minecraft mc = Minecraft.getMinecraft();
 
