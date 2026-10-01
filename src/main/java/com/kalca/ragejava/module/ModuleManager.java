@@ -16,6 +16,7 @@ public class ModuleManager {
         modules.add(new DelayRemover());
         modules.add(new BlockHit());
         modules.add(new RightClicker());
+        modules.add(new Velocity());
         modules.add(new Esp());
         modules.add(new Fullbright());
         modules.add(new Interface());
