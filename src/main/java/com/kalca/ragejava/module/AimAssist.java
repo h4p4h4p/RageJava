@@ -1,10 +1,16 @@
 package com.kalca.ragejava.module;
 
+import com.kalca.ragejava.settings.BooleanSetting;
+import com.kalca.ragejava.settings.ColorSetting;
+import com.kalca.ragejava.settings.Setting;
 import com.kalca.ragejava.settings.SliderSetting;
+import com.kalca.ragejava.util.RenderUtil;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.util.MathHelper;
+import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
@@ -28,6 +34,8 @@ public class AimAssist extends Module {
     private final SliderSetting ySmoothSetting = new SliderSetting("Y Smooth", 30, 0, 100, 1);
     private final SliderSetting sensitivitySetting = new SliderSetting("Sensitivity", 1.0, 0.1, 3.0, 0.05);
     private final SliderSetting fovSetting = new SliderSetting("FOV", 45, 1, 180, 1);
+    private final BooleanSetting showFovCircleSetting = new BooleanSetting("Show FOV Circle", false);
+    private final ColorSetting circleColorSetting = new ColorSetting("Circle Color", 0xFF1B395C);
 
     private final Minecraft mc = Minecraft.getMinecraft();
 
@@ -37,7 +45,15 @@ public class AimAssist extends Module {
         settings.add(ySmoothSetting);
         settings.add(sensitivitySetting);
         settings.add(fovSetting);
+        settings.add(showFovCircleSetting);
+        settings.add(circleColorSetting);
         MinecraftForge.EVENT_BUS.register(this);
+    }
+
+    @Override
+    public boolean isSettingVisible(Setting setting) {
+        if (setting == circleColorSetting) return showFovCircleSetting.getValue();
+        return true;
     }
 
     @SubscribeEvent
@@ -94,6 +110,36 @@ public class AimAssist extends Module {
 
         mc.thePlayer.rotationYaw = newYaw;
         mc.thePlayer.rotationPitch = newPitch;
+    }
+
+    /**
+     * Draws the acquisition zone as a ring around the crosshair, so the FOV slider can be
+     * tuned by eye instead of by guessing angles.
+     *
+     * The ring radius is the true projection of a cone of half-angle FOV, using the same
+     * tangent mapping the camera uses: screen offset = halfHeight * tan(angle) / tan(fov/2).
+     * It is capped at the half-height, so once the cone is wider than the screen (FOV past
+     * half the game FOV) the ring simply rests against the top and bottom edges and stops
+     * growing - the zone genuinely does cover the whole screen at that point, and letting
+     * the radius run past it just draws a curve the eye cannot follow back to the crosshair.
+     */
+    @SubscribeEvent
+    public void onOverlay(RenderGameOverlayEvent.Post event) {
+        if (!isEnabled()) return;
+        if (!showFovCircleSetting.getValue()) return;
+        if (event.type != RenderGameOverlayEvent.ElementType.ALL) return;
+        if (mc.thePlayer == null || mc.theWorld == null || mc.currentScreen != null) return;
+
+        ScaledResolution sr = new ScaledResolution(mc);
+        float cx = sr.getScaledWidth() / 2.0F;
+        float cy = sr.getScaledHeight() / 2.0F;
+
+        double denom = Math.tan(Math.toRadians(mc.gameSettings.fovSetting) * 0.5D);
+        double halfAngle = Math.toRadians(Math.min(fovSetting.getValue(), 89.0F));
+        float radius = denom > 1.0e-4D ? (float) (cy * Math.tan(halfAngle) / denom) : cy;
+        radius = Math.min(radius, cy);
+
+        RenderUtil.drawCircleOutline(cx, cy, radius, 1.5F, circleColorSetting.getValue(), 120);
     }
 
     /** Normalises an angle to [-180, 180) so the aim takes the short way around. */

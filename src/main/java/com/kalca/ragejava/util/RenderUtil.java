@@ -88,6 +88,45 @@ public class RenderUtil {
         GlStateManager.disableBlend();
     }
 
+    /**
+     * Filled ring of the given thickness, built from quads rather than a GL line loop so the
+     * stroke width is honoured on drivers that clamp glLineWidth to 1px.
+     */
+    public static void drawCircleOutline(float cx, float cy, float radius, float thickness, int color, int segments) {
+        if (radius <= 0.0F || segments < 3) return;
+        float a = (color >> 24 & 255) / 255.0F;
+        float r = (color >> 16 & 255) / 255.0F;
+        float g = (color >> 8 & 255) / 255.0F;
+        float b = (color & 255) / 255.0F;
+
+        float half = Math.max(thickness, 0.5F) * 0.5F;
+        float inner = Math.max(radius - half, 0.0F);
+        float outer = radius + half;
+
+        GlStateManager.enableBlend();
+        GlStateManager.disableTexture2D();
+        GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, 1, 0);
+
+        Tessellator tessellator = Tessellator.getInstance();
+        WorldRenderer wr = tessellator.getWorldRenderer();
+        wr.begin(7, DefaultVertexFormats.POSITION_COLOR);
+        double step = Math.PI * 2.0 / segments;
+        for (int i = 0; i < segments; i++) {
+            double a0 = i * step;
+            double a1 = (i + 1) * step;
+            double c0 = Math.cos(a0), s0 = Math.sin(a0);
+            double c1 = Math.cos(a1), s1 = Math.sin(a1);
+            wr.pos((float) (cx + c0 * inner), (float) (cy + s0 * inner), 0.0D).color(r, g, b, a).endVertex();
+            wr.pos((float) (cx + c0 * outer), (float) (cy + s0 * outer), 0.0D).color(r, g, b, a).endVertex();
+            wr.pos((float) (cx + c1 * outer), (float) (cy + s1 * outer), 0.0D).color(r, g, b, a).endVertex();
+            wr.pos((float) (cx + c1 * inner), (float) (cy + s1 * inner), 0.0D).color(r, g, b, a).endVertex();
+        }
+        tessellator.draw();
+
+        GlStateManager.enableTexture2D();
+        GlStateManager.disableBlend();
+    }
+
     public static void drawRoundedRect(float x, float y, float w, float h, float r, int color) {
         drawRect(x, y, w, h, color);
     }
