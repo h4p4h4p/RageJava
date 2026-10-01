@@ -10,6 +10,8 @@ import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.util.MathHelper;
+import net.minecraft.util.MovingObjectPosition;
+import net.minecraft.util.Vec3;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.common.MinecraftForge;
@@ -32,6 +34,9 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
  * hold LMB to engage, release to disengage, so simply walking around leaves your
  * view alone. The FOV circle is not gated by it, so the ring stays put as a
  * tuning aid instead of blinking with the key.
+ *
+ * Wall Check (on by default) drops targets with no clear line from eye to eye, so
+ * the assist stops pulling toward someone through a wall or a closed door.
  */
 public class AimAssist extends Module {
 
@@ -42,6 +47,7 @@ public class AimAssist extends Module {
     private final BooleanSetting showFovCircleSetting = new BooleanSetting("Show FOV Circle", false);
     private final ColorSetting circleColorSetting = new ColorSetting("Circle Color", 0xFF1B395C);
     private final BooleanSetting holdAttackSetting = new BooleanSetting("Hold Attack", false);
+    private final BooleanSetting wallCheckSetting = new BooleanSetting("Wall Check", true);
 
     private final Minecraft mc = Minecraft.getMinecraft();
 
@@ -54,6 +60,7 @@ public class AimAssist extends Module {
         settings.add(showFovCircleSetting);
         settings.add(circleColorSetting);
         settings.add(holdAttackSetting);
+        settings.add(wallCheckSetting);
         MinecraftForge.EVENT_BUS.register(this);
     }
 
@@ -100,6 +107,7 @@ public class AimAssist extends Module {
 
             double score = dYaw + dPitch;
             if (score < bestScore) {
+                if (wallCheckSetting.getValue() && !hasLineOfSight(entity)) continue;
                 bestScore = score;
                 targetYaw = yaw;
                 targetPitch = pitch;
@@ -118,6 +126,21 @@ public class AimAssist extends Module {
 
         mc.thePlayer.rotationYaw = newYaw;
         mc.thePlayer.rotationPitch = newPitch;
+    }
+
+    /**
+     * Traces eye-to-eye and reports whether the segment is clear of solid blocks.
+     *
+     * Liquids are passed through (stopOnLiquid=false) and grass/foliage - blocks with no
+     * full bounding box - are stepped over, so a target behind a bush or in tall grass is
+     * still considered visible. Returns true when the trace runs all the way to the target
+     * with nothing solid in between.
+     */
+    private boolean hasLineOfSight(Entity target) {
+        Vec3 eyes = new Vec3(mc.thePlayer.posX, mc.thePlayer.posY + mc.thePlayer.getEyeHeight(), mc.thePlayer.posZ);
+        Vec3 targetEyes = new Vec3(target.posX, target.posY + target.getEyeHeight(), target.posZ);
+        MovingObjectPosition hit = mc.theWorld.rayTraceBlocks(eyes, targetEyes, false, true, false);
+        return hit == null;
     }
 
     /**
