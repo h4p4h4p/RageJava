@@ -117,9 +117,9 @@ public class RenderUtil {
             double c0 = Math.cos(a0), s0 = Math.sin(a0);
             double c1 = Math.cos(a1), s1 = Math.sin(a1);
             wr.pos((float) (cx + c0 * inner), (float) (cy + s0 * inner), 0.0D).color(r, g, b, a).endVertex();
-            wr.pos((float) (cx + c0 * outer), (float) (cy + s0 * outer), 0.0D).color(r, g, b, a).endVertex();
-            wr.pos((float) (cx + c1 * outer), (float) (cy + s1 * outer), 0.0D).color(r, g, b, a).endVertex();
             wr.pos((float) (cx + c1 * inner), (float) (cy + s1 * inner), 0.0D).color(r, g, b, a).endVertex();
+            wr.pos((float) (cx + c1 * outer), (float) (cy + s1 * outer), 0.0D).color(r, g, b, a).endVertex();
+            wr.pos((float) (cx + c0 * outer), (float) (cy + s0 * outer), 0.0D).color(r, g, b, a).endVertex();
         }
         tessellator.draw();
 
