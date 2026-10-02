@@ -37,6 +37,10 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
  *
  * Wall Check (on by default) drops targets with no clear line from eye to eye, so
  * the assist stops pulling toward someone through a wall or a closed door.
+ *
+ * Max Distance caps how far away a target may be, measured eye-to-eye in blocks.
+ * It defaults to 4.5, roughly vanilla's attack reach, so the assist engages on
+ * things you could actually hit rather than snapping to something across the map.
  */
 public class AimAssist extends Module {
 
@@ -44,6 +48,7 @@ public class AimAssist extends Module {
     private final SliderSetting ySmoothSetting = new SliderSetting("Y Smooth", 30, 0, 100, 1);
     private final SliderSetting sensitivitySetting = new SliderSetting("Sensitivity", 1.0, 0.1, 3.0, 0.05);
     private final SliderSetting fovSetting = new SliderSetting("FOV", 45, 1, 180, 1);
+    private final SliderSetting maxDistanceSetting = new SliderSetting("Max Distance", 4.5, 0.5, 20.0, 0.5);
     private final BooleanSetting showFovCircleSetting = new BooleanSetting("Show FOV Circle", false);
     private final ColorSetting circleColorSetting = new ColorSetting("Circle Color", 0xFF1B395C);
     private final BooleanSetting holdAttackSetting = new BooleanSetting("Hold Attack", false);
@@ -57,6 +62,7 @@ public class AimAssist extends Module {
         settings.add(ySmoothSetting);
         settings.add(sensitivitySetting);
         settings.add(fovSetting);
+        settings.add(maxDistanceSetting);
         settings.add(showFovCircleSetting);
         settings.add(circleColorSetting);
         settings.add(holdAttackSetting);
@@ -88,6 +94,8 @@ public class AimAssist extends Module {
         float targetPitch = 0.0F;
         double bestScore = Double.MAX_VALUE;
         boolean found = false;
+        double maxDistance = maxDistanceSetting.getValue();
+        double maxDistanceSq = maxDistance * maxDistance;
 
         for (Entity entity : mc.theWorld.loadedEntityList) {
             if (entity == mc.thePlayer || entity.isDead || !(entity instanceof EntityLivingBase)) continue;
@@ -97,6 +105,10 @@ public class AimAssist extends Module {
             double dz = entity.posZ - pz;
             double hor = Math.sqrt(dx * dx + dz * dz);
             if (hor < 0.01D && Math.abs(dy) < 0.01D) continue;
+
+            // Compared squared to keep a sqrt out of the per-entity loop.
+            double distSq = hor * hor + dy * dy;
+            if (distSq > maxDistanceSq) continue;
 
             float yaw = (float) (Math.toDegrees(Math.atan2(dz, dx)) - 90.0D);
             float pitch = (float) -Math.toDegrees(Math.atan2(dy, hor));
