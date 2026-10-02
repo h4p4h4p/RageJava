@@ -21,6 +21,7 @@ public class ModuleManager {
         modules.add(new Velocity());
         modules.add(new Esp());
         modules.add(new Fullbright());
+        modules.add(new NoHurtCam());
         modules.add(new Interface());
     }
 
