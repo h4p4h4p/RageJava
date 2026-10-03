@@ -23,6 +23,7 @@ public class ModuleManager {
         modules.add(new Fullbright());
         modules.add(new NoHurtCam());
         modules.add(new Interface());
+        modules.add(new NameSpoof());
     }
 
     public List<Module> getModules() {
