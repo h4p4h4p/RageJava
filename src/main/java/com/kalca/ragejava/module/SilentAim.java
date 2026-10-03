@@ -222,14 +222,12 @@ public class SilentAim extends Module {
     }
 
     /**
-     * Shows the aimed rotation in third person so you can see it client-side without moving first person.
-     * Only applies when not in first person (third person view != 0).
+     * Shows the aimed rotation client-side so the camera moves like AimAssist does.
+     * This updates the local player's rotations while a target is held.
      */
     private void applyThirdPersonVisuals() {
         if (!hasTarget) return;
         if (mc.thePlayer == null) return;
-        // thirdPersonView: 0 = first person, 1 = third person back, 2 = third person front
-        if (mc.gameSettings.thirdPersonView == 0) return;
         mc.thePlayer.rotationYaw = aimYaw;
         mc.thePlayer.rotationYawHead = aimYaw;
         mc.thePlayer.renderYawOffset = aimYaw;
