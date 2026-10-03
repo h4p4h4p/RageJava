@@ -7,6 +7,9 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityPlayerSP;
 import net.minecraft.client.gui.GuiPlayerTabOverlay;
 import net.minecraft.client.network.NetworkPlayerInfo;
+import net.minecraft.client.renderer.entity.RenderManager;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.ChatComponentText;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
@@ -14,10 +17,10 @@ import net.minecraftforge.client.event.RenderLivingEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
+import org.lwjgl.opengl.GL11;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 
 public class NameSpoof extends Module {
 
@@ -62,6 +65,10 @@ public class NameSpoof extends Module {
         } else if (!selfSpoof && wasSelfSpoofing) {
             wasSelfSpoofing = false;
         }
+
+        if (otherSpoofSetting.getValue() && !otherRealNameSetting.getValue().isEmpty() && !otherFakeNameSetting.getValue().isEmpty()) {
+            nameMap.put(otherRealNameSetting.getValue(), otherFakeNameSetting.getValue());
+        }
     }
 
     @SubscribeEvent
@@ -74,13 +81,24 @@ public class NameSpoof extends Module {
         String spoofed = getSpoofedName(original);
 
         if (!original.equals(spoofed)) {
-            event.setCanceled(true);
+            player.setCustomNameTag(spoofed);
+            player.setAlwaysRenderNameTag(true);
         }
     }
 
     @SubscribeEvent
-    public void onRenderOverlay(RenderGameOverlayEvent.Text event) {
+    public void onRenderLivingPost(RenderLivingEvent.Specials.Post event) {
         if (!isEnabled()) return;
+        if (!(event.entity instanceof EntityPlayer)) return;
+
+        EntityPlayer player = (EntityPlayer) event.entity;
+        String original = player.getName();
+        String spoofed = getSpoofedName(original);
+
+        if (!original.equals(spoofed)) {
+            player.setCustomNameTag(original);
+            player.setAlwaysRenderNameTag(false);
+        }
     }
 
     @SubscribeEvent
@@ -99,10 +117,14 @@ public class NameSpoof extends Module {
             String original = info.getGameProfile().getName();
             String spoofed = getSpoofedName(original);
             if (!original.equals(spoofed)) {
-                info.getGameProfile().getProperties().clear();
-                info.getGameProfile().getProperties().put("name", new com.mojang.authlib.properties.Property("name", spoofed));
+                info.setDisplayName(new ChatComponentText(spoofed));
             }
         }
+    }
+
+    @SubscribeEvent
+    public void onRenderOverlay(RenderGameOverlayEvent.Text event) {
+        if (!isEnabled()) return;
     }
 
     public String getSpoofedName(String original) {
