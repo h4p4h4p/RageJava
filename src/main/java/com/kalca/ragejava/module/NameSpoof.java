@@ -9,8 +9,8 @@ import net.minecraft.client.gui.GuiPlayerTabOverlay;
 import net.minecraft.client.network.NetworkPlayerInfo;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.ChatComponentText;
-import net.minecraftforge.client.event.RenderLivingEvent;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
+import net.minecraftforge.client.event.RenderLivingEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
@@ -81,6 +81,28 @@ public class NameSpoof extends Module {
     @SubscribeEvent
     public void onRenderOverlay(RenderGameOverlayEvent.Text event) {
         if (!isEnabled()) return;
+    }
+
+    @SubscribeEvent
+    public void onRenderTabList(RenderGameOverlayEvent event) {
+        if (!isEnabled()) return;
+        if (event.type != RenderGameOverlayEvent.ElementType.PLAYER_LIST) return;
+        if (mc.thePlayer == null || mc.getNetHandler() == null) return;
+
+        boolean selfSpoof = selfSpoofSetting.getValue();
+        boolean otherSpoof = otherSpoofSetting.getValue();
+        if (!selfSpoof && !otherSpoof) return;
+
+        String fakeSelfName = selfNameSetting.getValue();
+        for (NetworkPlayerInfo info : mc.getNetHandler().getPlayerInfoMap()) {
+            if (info == null) continue;
+            String original = info.getGameProfile().getName();
+            String spoofed = getSpoofedName(original);
+            if (!original.equals(spoofed)) {
+                info.getGameProfile().getProperties().clear();
+                info.getGameProfile().getProperties().put("name", new com.mojang.authlib.properties.Property("name", spoofed));
+            }
+        }
     }
 
     public String getSpoofedName(String original) {

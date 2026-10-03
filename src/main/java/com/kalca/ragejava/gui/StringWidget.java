@@ -12,7 +12,9 @@ public class StringWidget extends Widget implements TextInput {
     private String buffer = "";
     private boolean capturing = false;
     private int cursorPos = 0;
-    private int blinkTimer = 0;
+    private long lastBlinkTime = 0;
+    private boolean blinkState = true;
+    private static final int BLINK_INTERVAL_MS = 530;
     private int maxLength = 64;
 
     public StringWidget(StringSetting setting) {
@@ -40,8 +42,12 @@ public class StringWidget extends Widget implements TextInput {
         RenderUtil.drawString(display, textX, textY, Theme.TEXT);
 
         if (capturing) {
-            blinkTimer++;
-            if (blinkTimer % 40 < 20) {
+            long now = System.currentTimeMillis();
+            if (now - lastBlinkTime >= BLINK_INTERVAL_MS) {
+                blinkState = !blinkState;
+                lastBlinkTime = now;
+            }
+            if (blinkState) {
                 String beforeCursor = buffer.substring(0, Math.min(cursorPos, buffer.length()));
                 float cursorX = textX + RenderUtil.getTextWidth(beforeCursor);
                 RenderUtil.drawRect(cursorX, textY, 1, RenderUtil.getTextHeight(), Theme.TEXT);
