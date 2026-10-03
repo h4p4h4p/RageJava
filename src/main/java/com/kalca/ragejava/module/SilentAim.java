@@ -66,6 +66,7 @@ public class SilentAim extends Module {
 
         armChannel();
         updateTarget();
+        applyThirdPersonVisuals();
     }
 
     @Override
@@ -218,6 +219,21 @@ public class SilentAim extends Module {
         if (wrapped >= 180.0F) wrapped -= 360.0F;
         if (wrapped < -180.0F) wrapped += 360.0F;
         return wrapped;
+    }
+
+    /**
+     * Shows the aimed rotation in third person so you can see it client-side without moving first person.
+     * Only applies when not in first person (third person view != 0).
+     */
+    private void applyThirdPersonVisuals() {
+        if (!hasTarget) return;
+        if (mc.thePlayer == null) return;
+        // thirdPersonView: 0 = first person, 1 = third person back, 2 = third person front
+        if (mc.gameSettings.thirdPersonView == 0) return;
+        mc.thePlayer.rotationYaw = aimYaw;
+        mc.thePlayer.rotationYawHead = aimYaw;
+        mc.thePlayer.renderYawOffset = aimYaw;
+        mc.thePlayer.rotationPitch = aimPitch;
     }
 
     private class SilentAimHandler extends ChannelOutboundHandlerAdapter {
