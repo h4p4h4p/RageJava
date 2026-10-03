@@ -36,7 +36,7 @@ public class NetworkModifications extends Module {
             new String[]{MODE_INBOUND, MODE_OUTBOUND, MODE_BOTH, MODE_PULSE}, ModeSetting.UNSET);
     private final ModeSetting pulseDirectionSetting = new ModeSetting("Pulse Direction",
             new String[]{MODE_OUTBOUND, MODE_INBOUND, MODE_BOTH}, 2);
-    private final SliderSetting pulseDelaySetting = new SliderSetting("Pulse Delay", 500, 100, 3000, 50);
+    private final SliderSetting pulseDelaySetting = new SliderSetting("Pulse Delay", 500, 10, 5000, 50);
 
     private final Minecraft mc = Minecraft.getMinecraft();
     private NetworkHandler handler;

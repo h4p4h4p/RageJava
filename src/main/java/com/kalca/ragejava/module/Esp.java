@@ -4,6 +4,7 @@ import com.kalca.ragejava.settings.BooleanSetting;
 import com.kalca.ragejava.settings.ColorSetting;
 import com.kalca.ragejava.settings.ModeSetting;
 import com.kalca.ragejava.settings.Setting;
+import com.kalca.ragejava.settings.SliderSetting;
 import com.kalca.ragejava.RageJava;
 import com.kalca.ragejava.module.Backtrack;
 import com.kalca.ragejava.util.RenderUtil;
@@ -40,6 +41,8 @@ public class Esp extends Module {
     private final BooleanSetting cornersSetting = new BooleanSetting("Corners", false);
     private final BooleanSetting namesSetting = new BooleanSetting("Names", true);
     private final BooleanSetting backtrackSetting = new BooleanSetting("Backtrack", false);
+    private final ColorSetting backtrackColorSetting = new ColorSetting("Backtrack Color", 0xFFFF0000);
+    private final SliderSetting backtrackBoxSizeSetting = new SliderSetting("Backtrack Box Size", 0.5, 0.1, 1.0, 0.05);
     private final ColorSetting colorSetting = new ColorSetting("Color", 0xFF1B395C);
     private final ColorSetting nameColorSetting = new ColorSetting("Name Color", 0xFFFFFFFF);
 
@@ -72,6 +75,8 @@ public class Esp extends Module {
         settings.add(cornersSetting);
         settings.add(namesSetting);
         settings.add(backtrackSetting);
+        settings.add(backtrackColorSetting);
+        settings.add(backtrackBoxSizeSetting);
         settings.add(colorSetting);
         settings.add(nameColorSetting);
         MinecraftForge.EVENT_BUS.register(this);
@@ -81,6 +86,8 @@ public class Esp extends Module {
     public boolean isSettingVisible(Setting setting) {
         if (setting == cornersSetting) return MODE_2D.equals(mode());
         if (setting == backtrackSetting) return MODE_3D.equals(mode());
+        if (setting == backtrackColorSetting) return MODE_3D.equals(mode()) && backtrackSetting.getValue();
+        if (setting == backtrackBoxSizeSetting) return MODE_3D.equals(mode()) && backtrackSetting.getValue();
         if (setting == nameColorSetting) return namesSetting.getValue();
         return true;
     }
@@ -237,17 +244,18 @@ public class Esp extends Module {
             if (backtrackModule != null && backtrackModule.isEnabled()) {
                 Map<Integer, Deque<Backtrack.PositionData>> history = ((Backtrack) backtrackModule).getHistory();
                 if (history != null) {
-                    int btColor = 0xFFFF0000;
+                    int btColor = backtrackColorSetting.getValue();
                     int btR = (btColor >> 16) & 0xFF;
                     int btG = (btColor >> 8) & 0xFF;
                     int btB = btColor & 0xFF;
-                    int btA = 120;
+                    int btA = 180;
+                    double boxSize = backtrackBoxSizeSetting.getValue();
 
                     for (Deque<Backtrack.PositionData> deque : history.values()) {
                         for (Backtrack.PositionData data : deque) {
                             AxisAlignedBB btBox = AxisAlignedBB.fromBounds(
-                                    data.x - camX - 0.3D, data.y - camY - 0.3D, data.z - camZ - 0.3D,
-                                    data.x - camX + 0.3D, data.y - camY + 0.3D, data.z - camZ + 0.3D);
+                                    data.x - camX - boxSize, data.y - camY - boxSize, data.z - camZ - boxSize,
+                                    data.x - camX + boxSize, data.y - camY + boxSize, data.z - camZ + boxSize);
                             RenderUtil.drawOutlinedBox(tessellator, btBox, btR, btG, btB, btA);
                         }
                     }
