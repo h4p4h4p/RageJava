@@ -7,6 +7,7 @@ import com.kalca.ragejava.settings.ColorSetting;
 import com.kalca.ragejava.settings.ModeSetting;
 import com.kalca.ragejava.settings.Setting;
 import com.kalca.ragejava.settings.SliderSetting;
+import com.kalca.ragejava.settings.StringSetting;
 import com.kalca.ragejava.util.RenderUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityOtherPlayerMP;
@@ -108,6 +109,8 @@ public class ModuleButton {
                 widgets.add(new ModeWidget((ModeSetting) setting));
             } else if (setting instanceof ColorSetting) {
                 widgets.add(new ColorWidget((ColorSetting) setting));
+            } else if (setting instanceof StringSetting) {
+                widgets.add(new StringWidget((StringSetting) setting));
             }
             builtSettings.add(setting);
         }
