@@ -4,6 +4,8 @@ import com.kalca.ragejava.settings.BooleanSetting;
 import com.kalca.ragejava.settings.ColorSetting;
 import com.kalca.ragejava.settings.ModeSetting;
 import com.kalca.ragejava.settings.Setting;
+import com.kalca.ragejava.RageJava;
+import com.kalca.ragejava.module.Backtrack;
 import com.kalca.ragejava.util.RenderUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.ScaledResolution;
@@ -22,7 +24,9 @@ import org.lwjgl.opengl.GL11;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.Arrays;
+import java.util.Deque;
 import java.util.List;
+import java.util.Map;
 
 public class Esp extends Module {
 
@@ -35,6 +39,7 @@ public class Esp extends Module {
     private final ModeSetting modeSetting = new ModeSetting("Mode", new String[]{MODE_2D, MODE_3D}, ModeSetting.UNSET);
     private final BooleanSetting cornersSetting = new BooleanSetting("Corners", false);
     private final BooleanSetting namesSetting = new BooleanSetting("Names", true);
+    private final BooleanSetting backtrackSetting = new BooleanSetting("Backtrack", false);
     private final ColorSetting colorSetting = new ColorSetting("Color", 0xFF1B395C);
     private final ColorSetting nameColorSetting = new ColorSetting("Name Color", 0xFFFFFFFF);
 
@@ -66,6 +71,7 @@ public class Esp extends Module {
         settings.add(modeSetting);
         settings.add(cornersSetting);
         settings.add(namesSetting);
+        settings.add(backtrackSetting);
         settings.add(colorSetting);
         settings.add(nameColorSetting);
         MinecraftForge.EVENT_BUS.register(this);
@@ -74,6 +80,7 @@ public class Esp extends Module {
     @Override
     public boolean isSettingVisible(Setting setting) {
         if (setting == cornersSetting) return MODE_2D.equals(mode());
+        if (setting == backtrackSetting) return MODE_3D.equals(mode());
         if (setting == nameColorSetting) return namesSetting.getValue();
         return true;
     }
@@ -224,6 +231,30 @@ public class Esp extends Module {
                     bb.maxZ + oz - camZ + pad);
             RenderUtil.drawOutlinedBox(tessellator, box, r, g, b, a);
         }
+
+        if (backtrackSetting.getValue()) {
+            Module backtrackModule = RageJava.INSTANCE.moduleManager.getModule("Backtrack");
+            if (backtrackModule != null && backtrackModule.isEnabled()) {
+                Map<Integer, Deque<Backtrack.PositionData>> history = ((Backtrack) backtrackModule).getHistory();
+                if (history != null) {
+                    int btColor = 0xFFFF0000;
+                    int btR = (btColor >> 16) & 0xFF;
+                    int btG = (btColor >> 8) & 0xFF;
+                    int btB = btColor & 0xFF;
+                    int btA = 120;
+
+                    for (Deque<Backtrack.PositionData> deque : history.values()) {
+                        for (Backtrack.PositionData data : deque) {
+                            AxisAlignedBB btBox = AxisAlignedBB.fromBounds(
+                                    data.x - camX - 0.3D, data.y - camY - 0.3D, data.z - camZ - 0.3D,
+                                    data.x - camX + 0.3D, data.y - camY + 0.3D, data.z - camZ + 0.3D);
+                            RenderUtil.drawOutlinedBox(tessellator, btBox, btR, btG, btB, btA);
+                        }
+                    }
+                }
+            }
+        }
+
         GlStateManager.enableTexture2D();
     }
 
