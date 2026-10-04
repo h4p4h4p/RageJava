@@ -1,5 +1,7 @@
 package com.kalca.ragejava.module;
 
+import com.kalca.ragejava.settings.ModeSetting;
+import com.kalca.ragejava.settings.Setting;
 import com.kalca.ragejava.settings.SliderSetting;
 import net.minecraft.client.Minecraft;
 import net.minecraftforge.common.MinecraftForge;
@@ -8,13 +10,35 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 
 public class Jetpack extends Module {
 
+    public static final String MODE_MOTION = "Motion";
+    public static final String MODE_VELOCITY = "Velocity";
+
+    private final ModeSetting modeSetting = new ModeSetting("Mode", new String[]{MODE_MOTION, MODE_VELOCITY}, 0);
     private final SliderSetting speedSetting = new SliderSetting("Speed", 0.5, 0.1, 2.0, 0.05);
     private final Minecraft mc = Minecraft.getMinecraft();
 
     public Jetpack() {
         super("Jetpack", Category.MOVEMENT);
+        settings.add(modeSetting);
         settings.add(speedSetting);
         MinecraftForge.EVENT_BUS.register(this);
+    }
+
+    @Override
+    public boolean isSettingVisible(Setting setting) {
+        return true;
+    }
+
+    private String mode() {
+        return modeSetting.getValue();
+    }
+
+    private boolean motion() {
+        return MODE_MOTION.equals(mode());
+    }
+
+    private boolean velocity() {
+        return MODE_VELOCITY.equals(mode());
     }
 
     @SubscribeEvent
@@ -24,7 +48,13 @@ public class Jetpack extends Module {
         if (mc.thePlayer == null) return;
 
         if (mc.gameSettings.keyBindJump.isKeyDown()) {
-            mc.thePlayer.motionY = speedSetting.getValue();
+            double speed = speedSetting.getValue();
+            if (motion()) {
+                mc.thePlayer.motionY = speed;
+            } else if (velocity()) {
+                mc.thePlayer.motionY = speed;
+                mc.thePlayer.velocityChanged = true;
+            }
         }
     }
 
