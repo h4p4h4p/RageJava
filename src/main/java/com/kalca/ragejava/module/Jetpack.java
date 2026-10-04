@@ -12,8 +12,9 @@ public class Jetpack extends Module {
 
     public static final String MODE_MOTION = "Motion";
     public static final String MODE_VELOCITY = "Velocity";
+    public static final String MODE_INFJUMP = "InfJump";
 
-    private final ModeSetting modeSetting = new ModeSetting("Mode", new String[]{MODE_MOTION, MODE_VELOCITY}, 0);
+    private final ModeSetting modeSetting = new ModeSetting("Mode", new String[]{MODE_MOTION, MODE_VELOCITY, MODE_INFJUMP}, 0);
     private final SliderSetting speedSetting = new SliderSetting("Speed", 0.5, 0.1, 2.0, 0.05);
     private final Minecraft mc = Minecraft.getMinecraft();
 
@@ -41,19 +42,30 @@ public class Jetpack extends Module {
         return MODE_VELOCITY.equals(mode());
     }
 
+    private boolean infJump() {
+        return MODE_INFJUMP.equals(mode());
+    }
+
     @SubscribeEvent
     public void onClientTick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.START) return;
         if (!isEnabled()) return;
         if (mc.thePlayer == null) return;
 
-        if (mc.gameSettings.keyBindJump.isKeyDown()) {
-            double speed = speedSetting.getValue();
-            if (motion()) {
-                mc.thePlayer.motionY = speed;
-            } else if (velocity()) {
-                mc.thePlayer.motionY = speed;
+        if (infJump()) {
+            if (mc.gameSettings.keyBindJump.isKeyDown() && !mc.thePlayer.onGround) {
+                mc.thePlayer.motionY = speedSetting.getValue();
                 mc.thePlayer.velocityChanged = true;
+            }
+        } else {
+            if (mc.gameSettings.keyBindJump.isKeyDown()) {
+                double speed = speedSetting.getValue();
+                if (motion()) {
+                    mc.thePlayer.motionY = speed;
+                } else if (velocity()) {
+                    mc.thePlayer.motionY = speed;
+                    mc.thePlayer.velocityChanged = true;
+                }
             }
         }
     }
