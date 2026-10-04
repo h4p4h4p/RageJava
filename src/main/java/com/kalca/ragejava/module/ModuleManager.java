@@ -24,6 +24,7 @@ public class ModuleManager {
         modules.add(new NoHurtCam());
         modules.add(new Interface());
         modules.add(new NameSpoof());
+        modules.add(new Jetpack());
     }
 
     public List<Module> getModules() {
