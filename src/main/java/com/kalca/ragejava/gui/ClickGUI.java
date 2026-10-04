@@ -120,8 +120,13 @@ public class ClickGUI extends GuiScreen {
     @Override
     protected void mouseClicked(int mouseX, int mouseY, int mouseButton) {
         TextInput capturing = findCapturingText();
-        if (capturing != null && !capturing.hitsTextField(mouseX, mouseY)) {
-            capturing.commitTextInput();
+        if (capturing != null) {
+            if (capturing.hitsTextField(mouseX, mouseY)) {
+                capturing.onClick(mouseX, mouseY, mouseButton);
+                return;
+            } else {
+                capturing.commitTextInput();
+            }
         }
 
         // A mode list swallows every click while it is open: pick, or dismiss without

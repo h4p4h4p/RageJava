@@ -10,6 +10,9 @@ public interface TextInput {
     /** Return true when the key was consumed. */
     boolean onTextKey(char typedChar, int keyCode);
 
+    /** Handle mouse click on the text field. Return true if consumed. */
+    boolean onClick(float mx, float my, int button);
+
     void commitTextInput();
 
     void cancelTextInput();

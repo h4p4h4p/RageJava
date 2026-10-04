@@ -70,7 +70,6 @@ public class StringWidget extends Widget implements TextInput {
         boolean hit = mx >= fieldX && mx <= fieldX + fieldW && my >= fieldY && my <= fieldY + fieldH;
         if (hit && button == 0) {
             capturing = true;
-            mc.displayGuiScreen(null);
             return true;
         }
         if (!hit && capturing) {
