@@ -17,7 +17,7 @@ public class LeftClicker extends Module {
 
     private final ModeSetting modeSetting = new ModeSetting("Mode", new String[]{MODE_NORMAL, MODE_TRIGGER}, 0);
     private final SliderSetting delaySetting = new SliderSetting("Delay", 100, 0, 1000, 10);
-    private final SliderSetting cpsSetting = new SliderSetting("CPS", 12, 1, 60, 1);
+    private final SliderSetting cpsSetting = new SliderSetting("CPS", 12, 1, 24, 1);
     private final SliderSetting randomSetting = new SliderSetting("Randomization", 0, 0, 100, 5);
 
     private final Minecraft mc = Minecraft.getMinecraft();

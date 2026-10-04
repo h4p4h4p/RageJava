@@ -11,7 +11,7 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 
 public class Speed extends Module {
 
-    private final SliderSetting speedSetting = new SliderSetting("Speed", 1.2, 0.5, 20.0, 0.05);
+    private final SliderSetting speedSetting = new SliderSetting("Speed", 1.2, 0.5, 5.0, 0.05);
     private final BooleanSetting autoJumpSetting = new BooleanSetting("Auto Jump", true);
 
     private final Minecraft mc = Minecraft.getMinecraft();
