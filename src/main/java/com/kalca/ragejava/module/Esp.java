@@ -11,6 +11,8 @@ import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.entity.Entity;
 import net.minecraft.util.AxisAlignedBB;
+import net.minecraft.util.MovingObjectPosition;
+import net.minecraft.util.Vec3;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.client.event.RenderLivingEvent;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
@@ -35,6 +37,7 @@ public class Esp extends Module {
     private final ModeSetting modeSetting = new ModeSetting("Mode", new String[]{MODE_2D, MODE_3D}, ModeSetting.UNSET);
     private final BooleanSetting cornersSetting = new BooleanSetting("Corners", false);
     private final BooleanSetting namesSetting = new BooleanSetting("Names", true);
+    private final BooleanSetting legitSetting = new BooleanSetting("LegitESP", false);
     private final ColorSetting colorSetting = new ColorSetting("Color", 0xFF1B395C);
     private final ColorSetting nameColorSetting = new ColorSetting("Name Color", 0xFFFFFFFF);
 
@@ -66,6 +69,7 @@ public class Esp extends Module {
         settings.add(modeSetting);
         settings.add(cornersSetting);
         settings.add(namesSetting);
+        settings.add(legitSetting);
         settings.add(colorSetting);
         settings.add(nameColorSetting);
         MinecraftForge.EVENT_BUS.register(this);
@@ -191,6 +195,7 @@ public class Esp extends Module {
         int b = color & 0xFF;
         int a = 255;
         boolean showNames = namesSetting.getValue();
+        boolean legit = legitSetting.getValue();
 
         GlStateManager.disableTexture2D();
         Tessellator tessellator = Tessellator.getInstance();
@@ -201,6 +206,8 @@ public class Esp extends Module {
             AxisAlignedBB bb = entity.getEntityBoundingBox();
 
             if (RenderUtil.pointNearBox(camX, camY, camZ, bb, NEAR_CAMERA_MARGIN)) continue;
+
+            if (legit && !isEntityVisible(entity, camX, camY, camZ)) continue;
 
             double ox = entity.lastTickPosX + (entity.posX - entity.lastTickPosX) * partialTicks - entity.posX;
             double oy = entity.lastTickPosY + (entity.posY - entity.lastTickPosY) * partialTicks - entity.posY;
@@ -233,11 +240,13 @@ public class Esp extends Module {
         double camY = mc.getRenderManager().viewerPosY;
         double camZ = mc.getRenderManager().viewerPosZ;
         boolean showNames = namesSetting.getValue();
+        boolean legit = legitSetting.getValue();
 
         List<net.minecraft.entity.player.EntityPlayer> players = mc.theWorld.playerEntities;
         for (int i = 0; i < players.size(); i++) {
             Entity entity = players.get(i);
             if (entity == mc.thePlayer) continue;
+            if (legit && !isEntityVisible(entity, camX, camY, camZ)) continue;
             AxisAlignedBB bb = entity.getEntityBoundingBox();
 
             double ox = entity.lastTickPosX + (entity.posX - entity.lastTickPosX) * partialTicks - entity.posX;
@@ -336,6 +345,19 @@ public class Esp extends Module {
         out[0] = (ndcX + 1.0D) * 0.5D * vw;
         out[1] = (ndcY + 1.0D) * 0.5D * vh;
         return true;
+    }
+
+    private boolean isEntityVisible(Entity entity, double camX, double camY, double camZ) {
+        if (mc.theWorld == null) return false;
+        Vec3 lookVec = mc.thePlayer.getLook(1.0F);
+        Vec3 start = new Vec3(camX, camY, camZ);
+        Vec3 end = start.addVector(lookVec.xCoord * 50, lookVec.yCoord * 50, lookVec.zCoord * 50);
+        AxisAlignedBB bb = entity.getEntityBoundingBox().expand(0.5, 0.5, 0.5);
+        MovingObjectPosition mop = mc.theWorld.rayTraceBlocks(start, end, false, true, false);
+        if (mop != null && mop.typeOfHit == MovingObjectPosition.MovingObjectType.BLOCK) {
+            return false;
+        }
+        return mc.theWorld.rayTraceBlocks(start, end, false, true, false) == null;
     }
 
     @Override
