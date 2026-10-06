@@ -25,6 +25,7 @@ public class LeftClicker extends Module {
     private final BooleanSetting doubleClickSetting = new BooleanSetting("Double Click", false);
     private final SliderSetting holdDurationSetting = new SliderSetting("Hold Duration", 50, 10, 200, 10);
     private final BooleanSetting tickSpreaderSetting = new BooleanSetting("Tick Spreader", false);
+    private final SliderSetting dropChanceSetting = new SliderSetting("Drop Chance", 0, 0, 95, 5);
 
     private final Minecraft mc = Minecraft.getMinecraft();
     private boolean wasDown;
@@ -41,6 +42,7 @@ public class LeftClicker extends Module {
         settings.add(doubleClickSetting);
         settings.add(holdDurationSetting);
         settings.add(tickSpreaderSetting);
+        settings.add(dropChanceSetting);
         MinecraftForge.EVENT_BUS.register(this);
     }
 
@@ -50,6 +52,7 @@ public class LeftClicker extends Module {
         if (setting == doubleClickSetting) return ncp;
         if (setting == holdDurationSetting) return ncp && doubleClickSetting.getValue();
         if (setting == tickSpreaderSetting) return ncp;
+        if (setting == dropChanceSetting) return ncp;
         return true;
     }
 
@@ -96,14 +99,18 @@ public class LeftClicker extends Module {
         }
 
         if (Math.random() < chance) {
-            click();
-            lastAttackTick = mc.thePlayer.ticksExisted;
+            if (ncp && dropChanceSetting.getValue() > 0 && Math.random() * 100 < dropChanceSetting.getValue()) {
+                lastAttackTick = mc.thePlayer.ticksExisted;
+            } else {
+                click();
+                lastAttackTick = mc.thePlayer.ticksExisted;
 
-            if (ncp && doubleClickSetting.getValue() && !doubleClicked) {
-                doubleClicked = true;
-                long holdMs = (long) holdDurationSetting.getValue();
-                if (now + holdMs > pressTime) {
-                    click();
+                if (ncp && doubleClickSetting.getValue() && !doubleClicked) {
+                    doubleClicked = true;
+                    long holdMs = (long) holdDurationSetting.getValue();
+                    if (now + holdMs > pressTime) {
+                        click();
+                    }
                 }
             }
         }
