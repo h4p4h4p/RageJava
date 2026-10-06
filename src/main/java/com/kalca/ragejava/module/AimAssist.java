@@ -2,6 +2,7 @@ package com.kalca.ragejava.module;
 
 import com.kalca.ragejava.settings.BooleanSetting;
 import com.kalca.ragejava.settings.ColorSetting;
+import com.kalca.ragejava.settings.ModeSetting;
 import com.kalca.ragejava.settings.Setting;
 import com.kalca.ragejava.settings.SliderSetting;
 import com.kalca.ragejava.util.RenderUtil;
@@ -17,32 +18,11 @@ import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 
-/**
- * Nudges the view toward the living entity nearest the crosshair.
- *
- * Rotates at RenderWorldLastEvent - the end of the frame, after the world tick and
- * after the mouse-look delta has already been applied for this frame. So the mouse
- * still nudges the aim on the next frame instead of overwriting it, and the new
- * rotation rides out with the next outgoing C03 look packet (sent every tick from
- * EntityPlayerSP.onUpdate), which is how the server learns where you're looking.
- *
- * Every frame it picks the entity with the smallest angular offset from the
- * crosshair that sits inside the FOV cone on both axes, then eases the current
- * yaw/pitch toward it by (smooth% * sensitivity) rather than snapping.
- *
- * With Hold Attack on, the assist only rotates while the attack key is held -
- * hold LMB to engage, release to disengage, so simply walking around leaves your
- * view alone. The FOV circle is not gated by it, so the ring stays put as a
- * tuning aid instead of blinking with the key.
- *
- * Wall Check (on by default) drops targets with no clear line from eye to eye, so
- * the assist stops pulling toward someone through a wall or a closed door.
- *
- * Max Distance caps how far away a target may be, measured eye-to-eye in blocks.
- * It defaults to 4.5, roughly vanilla's attack reach, so the assist engages on
- * things you could actually hit rather than snapping to something across the map.
- */
 public class AimAssist extends Module {
+
+    public static final String TARGET_HEAD = "Head";
+    public static final String TARGET_TORSO = "Torso";
+    public static final String TARGET_LEGS = "Legs";
 
     private final SliderSetting xSmoothSetting = new SliderSetting("X Smooth", 30, 0, 100, 1);
     private final SliderSetting ySmoothSetting = new SliderSetting("Y Smooth", 30, 0, 100, 1);
@@ -53,6 +33,7 @@ public class AimAssist extends Module {
     private final ColorSetting circleColorSetting = new ColorSetting("Circle Color", 0xFF1B395C);
     private final BooleanSetting holdAttackSetting = new BooleanSetting("Hold Attack", false);
     private final BooleanSetting wallCheckSetting = new BooleanSetting("Wall Check", true);
+    private final ModeSetting targetSetting = new ModeSetting("Target", new String[]{TARGET_HEAD, TARGET_TORSO, TARGET_LEGS}, 0);
 
     private final Minecraft mc = Minecraft.getMinecraft();
 
@@ -67,6 +48,7 @@ public class AimAssist extends Module {
         settings.add(circleColorSetting);
         settings.add(holdAttackSetting);
         settings.add(wallCheckSetting);
+        settings.add(targetSetting);
         MinecraftForge.EVENT_BUS.register(this);
     }
 
@@ -100,13 +82,28 @@ public class AimAssist extends Module {
         for (Entity entity : mc.theWorld.loadedEntityList) {
             if (entity == mc.thePlayer || entity.isDead || !(entity instanceof EntityLivingBase)) continue;
 
-            double dx = entity.posX - px;
-            double dy = (entity.posY + entity.getEyeHeight()) - py;
-            double dz = entity.posZ - pz;
+            double targetX, targetY, targetZ;
+            String targetMode = targetSetting.getValue();
+            if (TARGET_HEAD.equals(targetMode)) {
+                targetX = entity.posX;
+                targetY = entity.posY + entity.getEyeHeight();
+                targetZ = entity.posZ;
+            } else if (TARGET_TORSO.equals(targetMode)) {
+                targetX = entity.posX;
+                targetY = entity.posY + entity.getEyeHeight() * 0.5;
+                targetZ = entity.posZ;
+            } else {
+                targetX = entity.posX;
+                targetY = entity.posY;
+                targetZ = entity.posZ;
+            }
+
+            double dx = targetX - px;
+            double dy = targetY - py;
+            double dz = targetZ - pz;
             double hor = Math.sqrt(dx * dx + dz * dz);
             if (hor < 0.01D && Math.abs(dy) < 0.01D) continue;
 
-            // Compared squared to keep a sqrt out of the per-entity loop.
             double distSq = hor * hor + dy * dy;
             if (distSq > maxDistanceSq) continue;
 
@@ -140,32 +137,22 @@ public class AimAssist extends Module {
         mc.thePlayer.rotationPitch = newPitch;
     }
 
-    /**
-     * Traces eye-to-eye and reports whether the segment is clear of solid blocks.
-     *
-     * Liquids are passed through (stopOnLiquid=false) and grass/foliage - blocks with no
-     * full bounding box - are stepped over, so a target behind a bush or in tall grass is
-     * still considered visible. Returns true when the trace runs all the way to the target
-     * with nothing solid in between.
-     */
     private boolean hasLineOfSight(Entity target) {
         Vec3 eyes = new Vec3(mc.thePlayer.posX, mc.thePlayer.posY + mc.thePlayer.getEyeHeight(), mc.thePlayer.posZ);
-        Vec3 targetEyes = new Vec3(target.posX, target.posY + target.getEyeHeight(), target.posZ);
+        String targetMode = targetSetting.getValue();
+        double targetY;
+        if (TARGET_HEAD.equals(targetMode)) {
+            targetY = target.posY + target.getEyeHeight();
+        } else if (TARGET_TORSO.equals(targetMode)) {
+            targetY = target.posY + target.getEyeHeight() * 0.5;
+        } else {
+            targetY = target.posY;
+        }
+        Vec3 targetEyes = new Vec3(target.posX, targetY, target.posZ);
         MovingObjectPosition hit = mc.theWorld.rayTraceBlocks(eyes, targetEyes, false, true, false);
         return hit == null;
     }
 
-    /**
-     * Draws the acquisition zone as a ring around the crosshair, so the FOV slider can be
-     * tuned by eye instead of by guessing angles.
-     *
-     * The ring radius is the true projection of a cone of half-angle FOV, using the same
-     * tangent mapping the camera uses: screen offset = halfHeight * tan(angle) / tan(fov/2).
-     * It is capped at the half-height, so once the cone is wider than the screen (FOV past
-     * half the game FOV) the ring simply rests against the top and bottom edges and stops
-     * growing - the zone genuinely does cover the whole screen at that point, and letting
-     * the radius run past it just draws a curve the eye cannot follow back to the crosshair.
-     */
     @SubscribeEvent
     public void onOverlay(RenderGameOverlayEvent.Post event) {
         if (!isEnabled()) return;
@@ -185,7 +172,6 @@ public class AimAssist extends Module {
         RenderUtil.drawCircleOutline(cx, cy, radius, 1.5F, circleColorSetting.getValue(), 120);
     }
 
-    /** Normalises an angle to [-180, 180) so the aim takes the short way around. */
     private float wrapDegrees(float degrees) {
         float d = degrees % 360.0F;
         if (d >= 180.0F) d -= 360.0F;

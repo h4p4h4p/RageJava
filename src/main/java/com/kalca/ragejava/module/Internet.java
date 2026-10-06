@@ -23,7 +23,7 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 
 import java.util.ArrayDeque;
 
-public class NetworkModifications extends Module {
+public class Internet extends Module {
 
     public static final String MODE_INBOUND = "Inbound";
     public static final String MODE_OUTBOUND = "Outbound";
@@ -46,8 +46,8 @@ public class NetworkModifications extends Module {
     private double anchorY;
     private double anchorZ;
 
-    public NetworkModifications() {
-        super("NetworkModifications", Category.MOVEMENT);
+    public Internet() {
+        super("Internet", Category.MOVEMENT);
         settings.add(modeSetting);
         settings.add(pulseDirectionSetting);
         settings.add(pulseDelaySetting);
