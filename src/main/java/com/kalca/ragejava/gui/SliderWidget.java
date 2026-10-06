@@ -91,14 +91,19 @@ public class SliderWidget extends Widget implements TextInput {
         float labelZone = RenderUtil.getTextWidth(setting.getName()) + 10;
         if (!setting.isDefault()) labelZone += 7;
         trackX = x + labelZone;
-        float vw = RenderUtil.getTextWidth(formatValue());
-        trackW = Math.max((x + width - 12 - vw) - trackX, 4);
+        float maxVw = RenderUtil.getTextWidth(formatMaxValue());
+        trackW = Math.max((x + width - 12 - maxVw) - trackX, 4);
+    }
+
+    private String formatMaxValue() {
+        int decimals = setting.getStep() >= 1 ? 0 : (setting.getStep() >= 0.1 ? 1 : 2);
+        return String.format("%." + decimals + "f", setting.getMax());
     }
 
     @Override
     public float getPreferredWidth() {
         float marker = setting.isDefault() ? 0 : 7;
-        return Math.max(110, RenderUtil.getTextWidth(setting.getName()) + marker + 10 + 48 + RenderUtil.getTextWidth(formatValue()) + 10);
+        return Math.max(110, RenderUtil.getTextWidth(setting.getName()) + marker + 10 + 48 + RenderUtil.getTextWidth(formatMaxValue()) + 10);
     }
 
     private boolean onTrack(float mx, float my) {
