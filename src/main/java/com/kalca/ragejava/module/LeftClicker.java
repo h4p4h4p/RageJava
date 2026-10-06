@@ -21,6 +21,7 @@ public class LeftClicker extends Module {
     private final ModeSetting modeSetting = new ModeSetting("Mode", new String[]{MODE_NORMAL, MODE_TRIGGER, MODE_NCP}, 0);
     private final SliderSetting delaySetting = new SliderSetting("Delay", 100, 0, 1000, 10);
     private final SliderSetting cpsSetting = new SliderSetting("CPS", 12, 1, 24, 1);
+    private final SliderSetting ncpCpsSetting = new SliderSetting("NCP CPS", 12, 1, 18, 1);
     private final SliderSetting randomSetting = new SliderSetting("Randomization", 0, 0, 100, 5);
     private final BooleanSetting doubleClickSetting = new BooleanSetting("Double Click", false);
     private final SliderSetting holdDurationSetting = new SliderSetting("Hold Duration", 50, 10, 200, 10);
@@ -38,6 +39,7 @@ public class LeftClicker extends Module {
         settings.add(modeSetting);
         settings.add(delaySetting);
         settings.add(cpsSetting);
+        settings.add(ncpCpsSetting);
         settings.add(randomSetting);
         settings.add(doubleClickSetting);
         settings.add(holdDurationSetting);
@@ -49,6 +51,8 @@ public class LeftClicker extends Module {
     @Override
     public boolean isSettingVisible(Setting setting) {
         boolean ncp = MODE_NCP.equals(modeSetting.getValue());
+        if (setting == cpsSetting) return !ncp;
+        if (setting == ncpCpsSetting) return ncp;
         if (setting == doubleClickSetting) return ncp;
         if (setting == holdDurationSetting) return ncp && doubleClickSetting.getValue();
         if (setting == tickSpreaderSetting) return ncp;
@@ -91,7 +95,8 @@ public class LeftClicker extends Module {
         if (mc.thePlayer.ticksExisted == lastAttackTick) return;
 
         boolean ncp = MODE_NCP.equals(modeSetting.getValue());
-        double cps = ncp ? Math.min(cpsSetting.getValue(), 18) : cpsSetting.getValue();
+        double cps = ncp ? ncpCpsSetting.getValue() : cpsSetting.getValue();
+        if (cps <= 0) return;
         double chance = Math.min(1.0, (cps / 20.0) * jitterFactor());
 
         if (ncp && tickSpreaderSetting.getValue()) {
