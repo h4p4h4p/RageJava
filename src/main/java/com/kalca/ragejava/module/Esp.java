@@ -349,15 +349,11 @@ public class Esp extends Module {
 
     private boolean isEntityVisible(Entity entity, double camX, double camY, double camZ) {
         if (mc.theWorld == null) return false;
-        Vec3 lookVec = mc.thePlayer.getLook(1.0F);
         Vec3 start = new Vec3(camX, camY, camZ);
-        Vec3 end = start.addVector(lookVec.xCoord * 50, lookVec.yCoord * 50, lookVec.zCoord * 50);
         AxisAlignedBB bb = entity.getEntityBoundingBox().expand(0.5, 0.5, 0.5);
+        Vec3 end = new Vec3(bb.minX + (bb.maxX - bb.minX) * 0.5, bb.minY + (bb.maxY - bb.minY) * 0.5, bb.minZ + (bb.maxZ - bb.minZ) * 0.5);
         MovingObjectPosition mop = mc.theWorld.rayTraceBlocks(start, end, false, true, false);
-        if (mop != null && mop.typeOfHit == MovingObjectPosition.MovingObjectType.BLOCK) {
-            return false;
-        }
-        return mc.theWorld.rayTraceBlocks(start, end, false, true, false) == null;
+        return mop == null || mop.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK;
     }
 
     @Override
