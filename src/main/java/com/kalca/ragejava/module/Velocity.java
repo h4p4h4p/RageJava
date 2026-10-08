@@ -7,7 +7,6 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.entity.EntityPlayerSP;
 import net.minecraft.network.NetworkManager;
 import net.minecraft.network.Packet;
 import net.minecraft.network.play.server.S12PacketEntityVelocity;
@@ -16,30 +15,16 @@ import net.minecraft.util.Vec3;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
-import java.lang.reflect.Field;
 
-/**
- * Anti-knockback with two mechanisms.
- *
- * Modify replaces the incoming velocity packet (knockback is S12PacketEntityVelocity
- * for hits, S27PacketExplosion for blasts - both expose getters but no setters, so it
- * builds a scaled copy and forwards that instead) before the client thread applies it.
- * Vanilla then sets the player's motion to whatever we chose, so the real motion is
- * never seen.
- *
- * Lag chokes the packet entirely - it is consumed here and never reaches
- * handleEntityVelocity / handleExplosion, so the velocity is never applied at all.
- */
 public class Velocity extends Module {
 
     public static final String MODE_MODIFY = "Modify";
     public static final String MODE_LAG = "Lag";
-    public static final String MODE_SPOOF = "Spoof";
+    public static final String MODE_SIMULATIONS = "Simulations";
 
     private static final String HANDLER_NAME = "ragejava_velocity";
 
-    private final ModeSetting modeSetting = new ModeSetting("Mode", new String[]{MODE_MODIFY, MODE_LAG, MODE_SPOOF}, 0);
-    private final ModeSetting spoofSetting = new ModeSetting("Spoof", new String[]{"Ladder", "Boat", "Web"}, 0);
+    private final ModeSetting modeSetting = new ModeSetting("Mode", new String[]{MODE_MODIFY, MODE_LAG, MODE_SIMULATIONS}, 0);
     private final SliderSetting horizontalSetting = new SliderSetting("Horizontal", 0, 0, 100, 5);
     private final SliderSetting verticalSetting = new SliderSetting("Vertical", 0, 0, 100, 5);
     private final SliderSetting lagChanceSetting = new SliderSetting("Lag Chance", 0, 0, 100, 5);
@@ -52,7 +37,6 @@ public class Velocity extends Module {
     public Velocity() {
         super("Velocity", Category.COMBAT);
         settings.add(modeSetting);
-        settings.add(spoofSetting);
         settings.add(horizontalSetting);
         settings.add(verticalSetting);
         settings.add(lagChanceSetting);
@@ -61,7 +45,6 @@ public class Velocity extends Module {
 
     @Override
     public boolean isSettingVisible(Setting setting) {
-        if (setting == spoofSetting) return spoof();
         if (setting == horizontalSetting) return modify();
         if (setting == verticalSetting) return modify();
         if (setting == lagChanceSetting) return lag();
@@ -80,8 +63,8 @@ public class Velocity extends Module {
         return MODE_LAG.equals(mode());
     }
 
-    private boolean spoof() {
-        return MODE_SPOOF.equals(mode());
+    private boolean simulations() {
+        return MODE_SIMULATIONS.equals(mode());
     }
 
     @SubscribeEvent
@@ -90,33 +73,6 @@ public class Velocity extends Module {
         if (!isEnabled()) return;
         if (mc.thePlayer != null) playerId = mc.thePlayer.getEntityId();
         armChannel();
-
-        if (spoof() && mc.thePlayer != null) {
-            applySpoofState(mc.thePlayer);
-        }
-    }
-
-    private void applySpoofState(EntityPlayerSP player) {
-        String spoofType = spoofSetting.getValue();
-        try {
-            if ("Ladder".equals(spoofType)) {
-                Field f = EntityPlayerSP.class.getDeclaredField("isOnLadder");
-                f.setAccessible(true);
-                f.setBoolean(player, true);
-            } else if ("Boat".equals(spoofType)) {
-                Field f = EntityPlayerSP.class.getDeclaredField("isRiding");
-                f.setAccessible(true);
-                f.setBoolean(player, true);
-                Field r = EntityPlayerSP.class.getDeclaredField("ridingEntity");
-                r.setAccessible(true);
-                r.set(player, null);
-            } else if ("Web".equals(spoofType)) {
-                Field f = EntityPlayerSP.class.getDeclaredField("inWeb");
-                f.setAccessible(true);
-                f.setBoolean(player, true);
-            }
-        } catch (Exception ignored) {
-        }
     }
 
     private void armChannel() {
@@ -197,6 +153,9 @@ public class Velocity extends Module {
                                     p.getMotionY() / 8000.0 * v,
                                     p.getMotionZ() / 8000.0 * h);
                         }
+                        if (simulations()) {
+                            return;
+                        }
                     }
                 } else if (msg instanceof S27PacketExplosion) {
                     S27PacketExplosion p = (S27PacketExplosion) msg;
@@ -206,11 +165,12 @@ public class Velocity extends Module {
                     if (modify()) {
                         double h = horizontalSetting.getValue() / 100.0;
                         double v = verticalSetting.getValue() / 100.0;
-                        // The three motion getters are still SRG-named in stable_22
-                        // (getMotionX/Y/Z are unmapped here); position and strength are not.
                         msg = new S27PacketExplosion(p.getX(), p.getY(), p.getZ(), p.getStrength(),
                                 p.getAffectedBlockPositions(),
                                 new Vec3(p.func_149149_c() * h, p.func_149144_d() * v, p.func_149147_e() * h));
+                    }
+                    if (simulations()) {
+                        return;
                     }
                 }
             }
