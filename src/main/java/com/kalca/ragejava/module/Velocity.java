@@ -43,6 +43,7 @@ public class Velocity extends Module {
     private final ModeSetting spoofSetting = new ModeSetting("Spoof", new String[]{"Ladder", "Boat", "Web"}, 0);
     private final SliderSetting horizontalSetting = new SliderSetting("Horizontal", 0, 0, 100, 5);
     private final SliderSetting verticalSetting = new SliderSetting("Vertical", 0, 0, 100, 5);
+    private final SliderSetting lagChanceSetting = new SliderSetting("Lag Chance", 0, 0, 100, 5);
 
     private final Minecraft mc = Minecraft.getMinecraft();
     private VelocityHandler handler;
@@ -55,6 +56,7 @@ public class Velocity extends Module {
         settings.add(spoofSetting);
         settings.add(horizontalSetting);
         settings.add(verticalSetting);
+        settings.add(lagChanceSetting);
         MinecraftForge.EVENT_BUS.register(this);
     }
 
@@ -63,6 +65,7 @@ public class Velocity extends Module {
         if (setting == spoofSetting) return spoof();
         if (setting == horizontalSetting) return modify();
         if (setting == verticalSetting) return modify();
+        if (setting == lagChanceSetting) return lag();
         return super.isSettingVisible(setting);
     }
 
@@ -182,7 +185,9 @@ public class Velocity extends Module {
                 if (msg instanceof S12PacketEntityVelocity) {
                     S12PacketEntityVelocity p = (S12PacketEntityVelocity) msg;
                     if (id >= 0 && p.getEntityID() == id) {
-                        if (lag()) return;
+                        if (lag() && (lagChanceSetting.getValue() <= 0 || Math.random() * 100 >= lagChanceSetting.getValue())) {
+                            return;
+                        }
                         if (modify()) {
                             double h = horizontalSetting.getValue() / 100.0;
                             double v = verticalSetting.getValue() / 100.0;
@@ -194,7 +199,9 @@ public class Velocity extends Module {
                     }
                 } else if (msg instanceof S27PacketExplosion) {
                     S27PacketExplosion p = (S27PacketExplosion) msg;
-                    if (lag()) return;
+                    if (lag() && (lagChanceSetting.getValue() <= 0 || Math.random() * 100 >= lagChanceSetting.getValue())) {
+                        return;
+                    }
                     if (modify()) {
                         double h = horizontalSetting.getValue() / 100.0;
                         double v = verticalSetting.getValue() / 100.0;
