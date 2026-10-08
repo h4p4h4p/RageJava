@@ -10,7 +10,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityPlayerSP;
 import net.minecraft.network.NetworkManager;
 import net.minecraft.network.Packet;
-import net.minecraft.network.play.client.C03PacketPlayer;
 import net.minecraft.network.play.server.S12PacketEntityVelocity;
 import net.minecraft.network.play.server.S27PacketExplosion;
 import net.minecraft.util.Vec3;
@@ -92,29 +91,31 @@ public class Velocity extends Module {
         if (mc.thePlayer != null) playerId = mc.thePlayer.getEntityId();
         armChannel();
 
-        if (spoof() && mc.thePlayer != null && mc.getNetHandler() != null) {
-            String spoofType = spoofSetting.getValue();
-            EntityPlayerSP player = mc.thePlayer;
-            try {
-                if ("Ladder".equals(spoofType)) {
-                    Field f = EntityPlayerSP.class.getDeclaredField("isOnLadder");
-                    f.setAccessible(true);
-                    f.setBoolean(player, true);
-                } else if ("Boat".equals(spoofType)) {
-                    Field f = EntityPlayerSP.class.getDeclaredField("isRiding");
-                    f.setAccessible(true);
-                    f.setBoolean(player, true);
-                    Field r = EntityPlayerSP.class.getDeclaredField("ridingEntity");
-                    r.setAccessible(true);
-                    r.set(player, null);
-                } else if ("Web".equals(spoofType)) {
-                    Field f = EntityPlayerSP.class.getDeclaredField("inWeb");
-                    f.setAccessible(true);
-                    f.setBoolean(player, true);
-                }
-            } catch (Exception ignored) {
+        if (spoof() && mc.thePlayer != null) {
+            applySpoofState(mc.thePlayer);
+        }
+    }
+
+    private void applySpoofState(EntityPlayerSP player) {
+        String spoofType = spoofSetting.getValue();
+        try {
+            if ("Ladder".equals(spoofType)) {
+                Field f = EntityPlayerSP.class.getDeclaredField("isOnLadder");
+                f.setAccessible(true);
+                f.setBoolean(player, true);
+            } else if ("Boat".equals(spoofType)) {
+                Field f = EntityPlayerSP.class.getDeclaredField("isRiding");
+                f.setAccessible(true);
+                f.setBoolean(player, true);
+                Field r = EntityPlayerSP.class.getDeclaredField("ridingEntity");
+                r.setAccessible(true);
+                r.set(player, null);
+            } else if ("Web".equals(spoofType)) {
+                Field f = EntityPlayerSP.class.getDeclaredField("inWeb");
+                f.setAccessible(true);
+                f.setBoolean(player, true);
             }
-            mc.getNetHandler().addToSendQueue(new C03PacketPlayer(false));
+        } catch (Exception ignored) {
         }
     }
 
