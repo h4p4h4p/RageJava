@@ -5,17 +5,25 @@ import com.kalca.ragejava.settings.ModeSetting;
 import com.kalca.ragejava.settings.Setting;
 import com.kalca.ragejava.settings.SliderSetting;
 import com.kalca.ragejava.util.RenderUtil;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelDuplexHandler;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelPromise;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.network.NetworkManager;
+import net.minecraft.network.Packet;
+import net.minecraft.network.play.client.C03PacketPlayer;
 import net.minecraft.util.AxisAlignedBB;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
+import java.lang.reflect.Field;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -31,7 +39,11 @@ public class Hitboxes extends Module {
     private final BooleanSetting espSetting = new BooleanSetting("Show Hitboxes", false);
 
     private final Minecraft mc = Minecraft.getMinecraft();
-    private final Map<UUID, double[]> originalDims = new HashMap<>(); // [width, height]
+    private final Map<UUID, double[]> originalDims = new HashMap<>();
+
+    private DisadvantageHandler disadvantageHandler;
+    private Channel boundChannel;
+    private static final String HANDLER_NAME = "ragejava_disadvantage";
 
     public Hitboxes() {
         super("Hitboxes", Category.COMBAT);
@@ -98,37 +110,47 @@ public class Hitboxes extends Module {
                 entity.setEntityBoundingBox(expanded);
             }
         } else if (disadvantage()) {
-            EntityPlayer player = mc.thePlayer;
-            UUID uuid = player.getUniqueID();
-            double[] dims = originalDims.get(uuid);
+            armDisadvantageChannel();
+        }
+    }
 
-            if (dims == null) {
-                dims = new double[]{player.width, player.height};
-                originalDims.put(uuid, dims);
+    private void armDisadvantageChannel() {
+        if (mc.getNetHandler() == null) return;
+        NetworkManager manager = mc.getNetHandler().getNetworkManager();
+        if (manager == null) return;
+        Channel channel = manager.channel();
+        if (channel == null || !channel.isActive()) return;
+
+        if (disadvantageHandler == null) {
+            disadvantageHandler = new DisadvantageHandler();
+            boundChannel = channel;
+            if (channel.pipeline().get(HANDLER_NAME) == null) {
+                channel.eventLoop().execute(() -> {
+                    try {
+                        channel.pipeline().addBefore("packet_handler", HANDLER_NAME, disadvantageHandler);
+                    } catch (Exception ignored) {}
+                });
             }
-
-            double origWidth = dims[0];
-            double origHeight = dims[1];
-
-            double halfX = (origWidth * 0.5) * mult;
-            double halfY = (origHeight * 0.5) * mult;
-            double halfZ = (origWidth * 0.5) * mult;
-
-            double cx = player.posX;
-            double cy = player.posY;
-            double cz = player.posZ;
-
-            AxisAlignedBB expanded = new AxisAlignedBB(
-                    cx - halfX, cy - halfY, cz - halfZ,
-                    cx + halfX, cy + halfY, cz + halfZ);
-
-            player.setEntityBoundingBox(expanded);
+        } else if (boundChannel != channel) {
+            final Channel old = boundChannel;
+            boundChannel = channel;
+            channel.eventLoop().execute(() -> {
+                try {
+                    if (old != null && old.isActive()) old.pipeline().remove(HANDLER_NAME);
+                } catch (Exception ignored) {}
+            });
+            try {
+                if (channel.pipeline().get(HANDLER_NAME) == null) {
+                    channel.pipeline().addBefore("packet_handler", HANDLER_NAME, disadvantageHandler);
+                }
+            } catch (Exception ignored) {}
         }
     }
 
     @Override
     public void onEnable() {
         originalDims.clear();
+        if (disadvantage()) armDisadvantageChannel();
     }
 
     @Override
@@ -177,6 +199,19 @@ public class Hitboxes extends Module {
             }
         }
         originalDims.clear();
+
+        if (disadvantageHandler != null) {
+            Channel channel = boundChannel;
+            if (channel != null && channel.isActive()) {
+                channel.eventLoop().execute(() -> {
+                    try {
+                        if (channel.pipeline().get(HANDLER_NAME) != null) channel.pipeline().remove(HANDLER_NAME);
+                    } catch (Exception ignored) {}
+                });
+            }
+            disadvantageHandler = null;
+            boundChannel = null;
+        }
     }
 
     @SubscribeEvent
@@ -256,5 +291,50 @@ public class Hitboxes extends Module {
         }
 
         GlStateManager.enableTexture2D();
+    }
+
+private class DisadvantageHandler extends ChannelDuplexHandler {
+
+        @Override
+        public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+            if (isEnabled() && disadvantage() && msg instanceof C03PacketPlayer) {
+                C03PacketPlayer packet = (C03PacketPlayer) msg;
+                try {
+                    Field onGroundField = C03PacketPlayer.class.getDeclaredField("onGround");
+                    onGroundField.setAccessible(true);
+                    boolean onGround = onGroundField.getBoolean(packet);
+
+                    Field posXField = C03PacketPlayer.class.getDeclaredField("posX");
+                    posXField.setAccessible(true);
+                    double posX = posXField.getDouble(packet);
+
+                    Field posYField = C03PacketPlayer.class.getDeclaredField("posY");
+                    posYField.setAccessible(true);
+                    double posY = posYField.getDouble(packet);
+
+                    Field posZField = C03PacketPlayer.class.getDeclaredField("posZ");
+                    posZField.setAccessible(true);
+                    double posZ = posZField.getDouble(packet);
+
+                    double mult = multiplierSetting.getValue();
+                    double origWidth = mc.thePlayer.width;
+                    double origHeight = mc.thePlayer.height;
+                    double halfX = (origWidth * 0.5) * mult;
+                    double halfY = (origHeight * 0.5) * mult;
+                    double halfZ = (origWidth * 0.5) * mult;
+
+                    double newX = posX + halfX;
+                    double newY = posY + halfY;
+                    double newZ = posZ + halfZ;
+
+                    msg = new C03PacketPlayer.C04PacketPlayerPosition(
+                            newX, newY, newZ, onGround
+                    );
+                } catch (Exception e) {
+                    // Ignore reflection errors
+                }
+            }
+            super.write(ctx, msg, promise);
+        }
     }
 }
