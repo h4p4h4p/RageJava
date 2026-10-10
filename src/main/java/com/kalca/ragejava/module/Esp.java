@@ -206,9 +206,14 @@ public class Esp extends Module {
         for (int i = 0; i < players.size(); i++) {
             Entity entity = players.get(i);
             if (entity == mc.thePlayer) continue;
-            AxisAlignedBB bb = entity.getEntityBoundingBox();
+            
+            // Use original entity width/height instead of modified bounding box
+            double width = entity.width;
+            double height = entity.height;
+            double halfW = width * 0.5;
+            double halfH = height * 0.5;
 
-            if (RenderUtil.pointNearBox(camX, camY, camZ, bb, NEAR_CAMERA_MARGIN)) continue;
+            if (RenderUtil.pointNearBox(camX, camY, camZ, entity.getEntityBoundingBox(), NEAR_CAMERA_MARGIN)) continue;
 
             if (legit && !isEntityVisible(entity, camX, camY, camZ)) continue;
 
@@ -216,12 +221,16 @@ public class Esp extends Module {
             double oy = entity.lastTickPosY + (entity.posY - entity.lastTickPosY) * partialTicks - entity.posY;
             double oz = entity.lastTickPosZ + (entity.posZ - entity.lastTickPosZ) * partialTicks - entity.posZ;
 
-            double minX = bb.minX + ox - camX;
-            double minY = bb.minY + oy - camY;
-            double minZ = bb.minZ + oz - camZ;
-            double maxX = bb.maxX + ox - camX;
-            double maxY = bb.maxY + oy - camY;
-            double maxZ = bb.maxZ + oz - camZ;
+            double cx = entity.posX + ox;
+            double cy = entity.posY + oy;
+            double cz = entity.posZ + oz;
+
+            double minX = cx - halfW - camX;
+            double minY = cy - halfH - camY;
+            double minZ = cz - halfW - camZ;
+            double maxX = cx + halfW - camX;
+            double maxY = cy + halfH - camY;
+            double maxZ = cz + halfW - camZ;
 
             // Filled box (semi-transparent)
             int fillAlpha = 100;
@@ -231,7 +240,8 @@ public class Esp extends Module {
             if (namesSetting.getValue()) {
                 double midX = (minX + maxX) * 0.5;
                 double midZ = (minZ + maxZ) * 0.5;
-                if (project(midX, maxY + 0.3, midZ, feetScratch)) {
+                double maxYScreen = cy + halfH + oy - camY;
+                if (project(midX - camX, maxYScreen + 0.3, midZ - camZ, feetScratch)) {
                     storeName(entity.getName(), feetScratch[0], feetScratch[1]);
                 }
             }
