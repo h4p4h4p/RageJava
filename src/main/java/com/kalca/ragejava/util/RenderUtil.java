@@ -50,46 +50,43 @@ public class RenderUtil {
     public static void drawFilledBox(Tessellator tessellator, double minX, double minY, double minZ, double maxX, double maxY, double maxZ, int r, int g, int b, int a) {
         WorldRenderer wr = tessellator.getWorldRenderer();
         wr.begin(7, DefaultVertexFormats.POSITION_COLOR);
-        // Bottom
+        
+        // Bottom (minY)
         vertex(wr, minX, minY, minZ, r, g, b, a);
         vertex(wr, maxX, minY, minZ, r, g, b, a);
         vertex(wr, maxX, minY, maxZ, r, g, b, a);
         vertex(wr, minX, minY, maxZ, r, g, b, a);
-        tessellator.draw();
-        // Top
-        wr.begin(7, DefaultVertexFormats.POSITION_COLOR);
+        
+        // Top (maxY)
         vertex(wr, minX, maxY, minZ, r, g, b, a);
         vertex(wr, maxX, maxY, minZ, r, g, b, a);
         vertex(wr, maxX, maxY, maxZ, r, g, b, a);
         vertex(wr, minX, maxY, maxZ, r, g, b, a);
-        tessellator.draw();
-        // Front
-        wr.begin(7, DefaultVertexFormats.POSITION_COLOR);
+        
+        // Front (maxZ)
         vertex(wr, minX, minY, maxZ, r, g, b, a);
         vertex(wr, maxX, minY, maxZ, r, g, b, a);
         vertex(wr, maxX, maxY, maxZ, r, g, b, a);
         vertex(wr, minX, maxY, maxZ, r, g, b, a);
-        tessellator.draw();
-        // Back
-        wr.begin(7, DefaultVertexFormats.POSITION_COLOR);
+        
+        // Back (minZ)
         vertex(wr, maxX, minY, minZ, r, g, b, a);
         vertex(wr, minX, minY, minZ, r, g, b, a);
         vertex(wr, minX, maxY, minZ, r, g, b, a);
         vertex(wr, maxX, maxY, minZ, r, g, b, a);
-        tessellator.draw();
-        // Left
-        wr.begin(7, DefaultVertexFormats.POSITION_COLOR);
+        
+        // Left (minX)
         vertex(wr, minX, minY, minZ, r, g, b, a);
         vertex(wr, minX, minY, maxZ, r, g, b, a);
         vertex(wr, minX, maxY, maxZ, r, g, b, a);
         vertex(wr, minX, maxY, minZ, r, g, b, a);
-        tessellator.draw();
-        // Right
-        wr.begin(7, DefaultVertexFormats.POSITION_COLOR);
+        
+        // Right (maxX)
         vertex(wr, maxX, minY, maxZ, r, g, b, a);
         vertex(wr, maxX, minY, minZ, r, g, b, a);
         vertex(wr, maxX, maxY, minZ, r, g, b, a);
         vertex(wr, maxX, maxY, maxZ, r, g, b, a);
+        
         tessellator.draw();
     }
 
