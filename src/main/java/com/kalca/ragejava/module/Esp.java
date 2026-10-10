@@ -224,7 +224,7 @@ public class Esp extends Module {
             double maxZ = bb.maxZ + oz - camZ;
 
             // Filled box (semi-transparent)
-            int fillAlpha = 40;
+            int fillAlpha = 100;
             RenderUtil.drawFilledBox(tessellator, minX, minY, minZ, maxX, maxY, maxZ, r, g, b, fillAlpha);
 
             // Name above box

@@ -230,8 +230,10 @@ public class ModuleButton {
         if (draw3D) {
             GlStateManager.disableDepth();
             GlStateManager.disableTexture2D();
+            GlStateManager.enableBlend();
+            GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, 1, 0);
             AxisAlignedBB box = AxisAlignedBB.fromBounds(-0.1D, -0.1D, -0.1D, 0.7D, 1.9D, 0.7D);
-            RenderUtil.drawOutlinedBox(Tessellator.getInstance(), box, r, g, b, 255);
+            RenderUtil.drawFilledBox(Tessellator.getInstance(), box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, r, g, b, 100);
             GlStateManager.enableTexture2D();
         }
         GlStateManager.popMatrix();
