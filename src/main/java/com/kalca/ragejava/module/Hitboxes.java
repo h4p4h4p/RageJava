@@ -21,8 +21,7 @@ import java.util.UUID;
 
 public class Hitboxes extends Module {
 
-    private final SliderSetting expansionSetting = new SliderSetting("Expansion", 0.3, 0.0, 2.0, 0.05);
-    private final SliderSetting heightSetting = new SliderSetting("Height", 0.0, 0.0, 2.0, 0.05);
+    private final SliderSetting multiplierSetting = new SliderSetting("Multiplier", 1.5, 1.0, 5.0, 0.05);
     private final BooleanSetting espSetting = new BooleanSetting("Show Hitboxes", false);
 
     private final Minecraft mc = Minecraft.getMinecraft();
@@ -30,8 +29,7 @@ public class Hitboxes extends Module {
 
     public Hitboxes() {
         super("Hitboxes", Category.COMBAT);
-        settings.add(expansionSetting);
-        settings.add(heightSetting);
+        settings.add(multiplierSetting);
         settings.add(espSetting);
         MinecraftForge.EVENT_BUS.register(this);
     }
@@ -42,8 +40,7 @@ public class Hitboxes extends Module {
         if (!isEnabled()) return;
         if (mc.theWorld == null || mc.thePlayer == null) return;
 
-        double expand = expansionSetting.getValue();
-        double height = heightSetting.getValue();
+        double mult = multiplierSetting.getValue();
 
         for (Entity entity : mc.theWorld.loadedEntityList) {
             if (entity == mc.thePlayer) continue;
@@ -58,14 +55,17 @@ public class Hitboxes extends Module {
                 originalBoxes.put(uuid, original);
             }
 
-            double minX = original.minX - expand;
-            double minY = original.minY - (height > 0 ? height / 2.0 : 0);
-            double minZ = original.minZ - expand;
-            double maxX = original.maxX + expand;
-            double maxY = original.maxY + (height > 0 ? height / 2.0 : 0);
-            double maxZ = original.maxZ + expand;
+            double cx = (original.minX + original.maxX) * 0.5;
+            double cy = (original.minY + original.maxY) * 0.5;
+            double cz = (original.minZ + original.maxZ) * 0.5;
 
-            entity.setEntityBoundingBox(new AxisAlignedBB(minX, minY, minZ, maxX, maxY, maxZ));
+            double halfX = (original.maxX - original.minX) * 0.5 * mult;
+            double halfY = (original.maxY - original.minY) * 0.5 * mult;
+            double halfZ = (original.maxZ - original.minZ) * 0.5 * mult;
+
+            entity.setEntityBoundingBox(new AxisAlignedBB(
+                    cx - halfX, cy - halfY, cz - halfZ,
+                    cx + halfX, cy + halfY, cz + halfZ));
         }
     }
 
@@ -109,8 +109,7 @@ public class Hitboxes extends Module {
         double camY = mc.getRenderManager().viewerPosY;
         double camZ = mc.getRenderManager().viewerPosZ;
 
-        double expand = expansionSetting.getValue();
-        double height = heightSetting.getValue();
+        double mult = multiplierSetting.getValue();
 
         int r = 255, g = 255, b = 255, a = 180;
 
@@ -126,16 +125,17 @@ public class Hitboxes extends Module {
             AxisAlignedBB original = originalBoxes.get(uuid);
             if (original == null) continue;
 
-            double minX = original.minX - expand;
-            double minY = original.minY - (height > 0 ? height / 2.0 : 0);
-            double minZ = original.minZ - expand;
-            double maxX = original.maxX + expand;
-            double maxY = original.maxY + (height > 0 ? height / 2.0 : 0);
-            double maxZ = original.maxZ + expand;
+            double cx = (original.minX + original.maxX) * 0.5;
+            double cy = (original.minY + original.maxY) * 0.5;
+            double cz = (original.minZ + original.maxZ) * 0.5;
+
+            double halfX = (original.maxX - original.minX) * 0.5 * mult;
+            double halfY = (original.maxY - original.minY) * 0.5 * mult;
+            double halfZ = (original.maxZ - original.minZ) * 0.5 * mult;
 
             AxisAlignedBB box = AxisAlignedBB.fromBounds(
-                    minX - camX, minY - camY, minZ - camZ,
-                    maxX - camX, maxY - camY, maxZ - camZ);
+                    cx - halfX - camX, cy - halfY - camY, cz - halfZ - camZ,
+                    cx + halfX - camX, cy + halfY - camY, cz + halfZ - camZ);
 
             RenderUtil.drawOutlinedBox(tessellator, box, r, g, b, a);
         }
