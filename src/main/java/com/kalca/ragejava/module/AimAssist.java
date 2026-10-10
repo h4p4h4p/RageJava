@@ -18,6 +18,7 @@ import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.client.event.RenderWorldLastEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.fml.common.gameevent.TickEvent;
 
 public class AimAssist extends Module {
 
@@ -41,6 +42,11 @@ public class AimAssist extends Module {
     private final ModeSetting targetSetting = new ModeSetting("Target", new String[]{TARGET_HEAD, TARGET_TORSO, TARGET_LEGS}, 0);
 
     private final Minecraft mc = Minecraft.getMinecraft();
+
+    private float silentYaw = 0.0F;
+    private float silentPitch = 0.0F;
+    private boolean hasSilentTarget = false;
+    private int lastSentTick = -1;
 
     public AimAssist() {
         super("AimAssist", Category.COMBAT);
@@ -140,11 +146,35 @@ public class AimAssist extends Module {
         float newPitch = MathHelper.clamp_float(curPitch + (targetPitch - curPitch) * pitchFactor, -90.0F, 90.0F);
 
         if (silent()) {
-            mc.getNetHandler().addToSendQueue(new net.minecraft.network.play.client.C03PacketPlayer.C05PacketPlayerLook(newYaw, newPitch, mc.thePlayer.onGround));
+            silentYaw = newYaw;
+            silentPitch = newPitch;
+            hasSilentTarget = true;
         } else {
             mc.thePlayer.rotationYaw = newYaw;
             mc.thePlayer.rotationPitch = newPitch;
+            hasSilentTarget = false;
         }
+    }
+
+    @SubscribeEvent
+    public void onClientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.START) return;
+        if (!isEnabled()) return;
+        if (!silent()) return;
+        if (!hasSilentTarget) return;
+        if (mc.thePlayer == null || mc.getNetHandler() == null) return;
+
+        int currentTick = mc.thePlayer.ticksExisted;
+        if (currentTick == lastSentTick) return;
+
+        float curYaw = mc.thePlayer.rotationYaw;
+        float curPitch = mc.thePlayer.rotationPitch;
+        float dYaw = Math.abs(wrapDegrees(silentYaw - curYaw));
+        float dPitch = Math.abs(silentPitch - curPitch);
+        if (dYaw < 0.01F && dPitch < 0.01F) return;
+
+        mc.getNetHandler().addToSendQueue(new C03PacketPlayer.C05PacketPlayerLook(silentYaw, silentPitch, mc.thePlayer.onGround));
+        lastSentTick = currentTick;
     }
 
     private boolean hasLineOfSight(Entity target) {
