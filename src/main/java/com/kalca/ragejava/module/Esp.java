@@ -38,6 +38,12 @@ public class Esp extends Module {
     private final BooleanSetting cornersSetting = new BooleanSetting("Corners", false);
     private final BooleanSetting namesSetting = new BooleanSetting("Names", true);
     private final BooleanSetting legitSetting = new BooleanSetting("LegitESP", false);
+    private final BooleanSetting fireOverlaySetting = new BooleanSetting("No Fire", false);
+    private final BooleanSetting portalOverlaySetting = new BooleanSetting("No Portal", false);
+    private final BooleanSetting nauseaOverlaySetting = new BooleanSetting("No Nausea", false);
+    private final BooleanSetting blindnessOverlaySetting = new BooleanSetting("No Blindness", false);
+    private final BooleanSetting waterOverlaySetting = new BooleanSetting("No Water", false);
+    private final BooleanSetting pumpkinOverlaySetting = new BooleanSetting("No Pumpkin", false);
     private final ColorSetting colorSetting = new ColorSetting("Color", 0xFF1B395C);
     private final ColorSetting nameColorSetting = new ColorSetting("Name Color", 0xFFFFFFFF);
 
@@ -70,6 +76,12 @@ public class Esp extends Module {
         settings.add(cornersSetting);
         settings.add(namesSetting);
         settings.add(legitSetting);
+        settings.add(fireOverlaySetting);
+        settings.add(portalOverlaySetting);
+        settings.add(nauseaOverlaySetting);
+        settings.add(blindnessOverlaySetting);
+        settings.add(waterOverlaySetting);
+        settings.add(pumpkinOverlaySetting);
         settings.add(colorSetting);
         settings.add(nameColorSetting);
         MinecraftForge.EVENT_BUS.register(this);
@@ -146,6 +158,30 @@ public class Esp extends Module {
         }
     }
 
+    @SubscribeEvent
+    public void onOverlayPre(RenderGameOverlayEvent.Pre event) {
+        if (!isEnabled()) return;
+        String typeName = event.type.name();
+        if (fireOverlaySetting.getValue() && typeName.equals("FIRE")) {
+            event.setCanceled(true);
+        }
+        if (portalOverlaySetting.getValue() && typeName.equals("PORTAL")) {
+            event.setCanceled(true);
+        }
+        if (nauseaOverlaySetting.getValue() && (typeName.equals("CONFUSION") || typeName.equals("NAUSEA"))) {
+            event.setCanceled(true);
+        }
+        if (blindnessOverlaySetting.getValue() && typeName.equals("BLINDNESS")) {
+            event.setCanceled(true);
+        }
+        if (waterOverlaySetting.getValue() && typeName.equals("WATER")) {
+            event.setCanceled(true);
+        }
+        if (pumpkinOverlaySetting.getValue() && typeName.equals("PUMPKIN")) {
+            event.setCanceled(true);
+        }
+    }
+
     private boolean captureMatrices() {
         if (mvBuf == null) {
             viewport = BufferUtils.createIntBuffer(16);
@@ -193,11 +229,12 @@ public class Esp extends Module {
         int r = (color >> 16) & 0xFF;
         int g = (color >> 8) & 0xFF;
         int b = color & 0xFF;
-        int a = 255;
         boolean showNames = namesSetting.getValue();
         boolean legit = legitSetting.getValue();
 
         GlStateManager.disableTexture2D();
+        GlStateManager.enableBlend();
+        GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, 1, 0);
         Tessellator tessellator = Tessellator.getInstance();
         List<net.minecraft.entity.player.EntityPlayer> players = mc.theWorld.playerEntities;
         for (int i = 0; i < players.size(); i++) {
@@ -213,25 +250,51 @@ public class Esp extends Module {
             double oy = entity.lastTickPosY + (entity.posY - entity.lastTickPosY) * partialTicks - entity.posY;
             double oz = entity.lastTickPosZ + (entity.posZ - entity.lastTickPosZ) * partialTicks - entity.posZ;
 
-            if (showNames) {
-                double midX = (bb.minX + bb.maxX) * 0.5D + ox;
-                double midZ = (bb.minZ + bb.maxZ) * 0.5D + oz;
-                if (project(midX - camX, bb.maxY + oy - camY, midZ - camZ, feetScratch)) {
+            double minX = bb.minX + ox - camX;
+            double minY = bb.minY + oy - camY;
+            double minZ = bb.minZ + oz - camZ;
+            double maxX = bb.maxX + ox - camX;
+            double maxY = bb.maxY + oy - camY;
+            double maxZ = bb.maxZ + oz - camZ;
+
+            // Filled box (semi-transparent)
+            int fillAlpha = 40;
+            RenderUtil.drawFilledBox(tessellator, minX, minY, minZ, maxX, maxY, maxZ, r, g, b, fillAlpha);
+
+            // Outline
+            int outlineAlpha = 255;
+            RenderUtil.drawOutlinedBox(tessellator, AxisAlignedBB.fromBounds(minX, minY, minZ, maxX, maxY, maxZ), r, g, b, outlineAlpha);
+
+            // Health bar
+            if (entity instanceof net.minecraft.entity.player.EntityPlayer) {
+                net.minecraft.entity.player.EntityPlayer player = (net.minecraft.entity.player.EntityPlayer) entity;
+                float health = player.getHealth();
+                float maxHealth = player.getMaxHealth();
+                float healthPercent = Math.max(0, Math.min(1, health / maxHealth));
+
+                int barX = (int) (minX - 1.5);
+                int barY = (int) (maxY + 0.5);
+                int barHeight = (int) ((maxY - minY) * healthPercent);
+
+                // Health bar background
+                RenderUtil.drawFilledBox(tessellator, minX - 1.8, minY, minZ, minX - 1.2, maxY, maxZ, 0, 0, 0, 180);
+                // Health bar fill
+                int healthR = (int) (255 * (1 - healthPercent));
+                int healthG = (int) (255 * healthPercent);
+                RenderUtil.drawFilledBox(tessellator, minX - 1.7, maxY - barHeight, minZ, minX - 1.3, maxY, maxZ, healthR, healthG, 0, 200);
+            }
+
+            // Name above box
+            if (namesSetting.getValue()) {
+                double midX = (minX + maxX) * 0.5;
+                double midZ = (minZ + maxZ) * 0.5;
+                if (project(midX, maxY + 0.3, midZ, feetScratch)) {
                     storeName(entity.getName(), feetScratch[0], feetScratch[1]);
                 }
             }
-
-            double pad = 0.1D;
-            AxisAlignedBB box = AxisAlignedBB.fromBounds(
-                    bb.minX + ox - camX - pad,
-                    bb.minY + oy - camY - pad,
-                    bb.minZ + oz - camZ - pad,
-                    bb.maxX + ox - camX + pad,
-                    bb.maxY + oy - camY + pad,
-                    bb.maxZ + oz - camZ + pad);
-            RenderUtil.drawOutlinedBox(tessellator, box, r, g, b, a);
         }
 
+        GlStateManager.disableBlend();
         GlStateManager.enableTexture2D();
     }
 
