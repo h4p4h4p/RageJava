@@ -31,8 +31,7 @@ public class Hitboxes extends Module {
     private final BooleanSetting espSetting = new BooleanSetting("Show Hitboxes", false);
 
     private final Minecraft mc = Minecraft.getMinecraft();
-    private final Map<UUID, AxisAlignedBB> originalBoxes = new HashMap<>();
-    private final Map<UUID, AxisAlignedBB> expandedBoxes = new HashMap<>();
+    private final Map<UUID, double[]> originalDims = new HashMap<>(); // [width, height]
 
     public Hitboxes() {
         super("Hitboxes", Category.COMBAT);
@@ -74,59 +73,62 @@ public class Hitboxes extends Module {
                 if (entity.isDead) continue;
 
                 UUID uuid = entity.getUniqueID();
-                AxisAlignedBB original = originalBoxes.get(uuid);
+                double[] dims = originalDims.get(uuid);
 
-                if (original == null) {
-                    original = entity.getEntityBoundingBox();
-                    originalBoxes.put(uuid, original);
+                if (dims == null) {
+                    dims = new double[]{entity.width, entity.height};
+                    originalDims.put(uuid, dims);
                 }
 
-                double cx = (original.minX + original.maxX) * 0.5;
-                double cy = (original.minY + original.maxY) * 0.5;
-                double cz = (original.minZ + original.maxZ) * 0.5;
+                double origWidth = dims[0];
+                double origHeight = dims[1];
 
-                double halfX = (original.maxX - original.minX) * 0.5 * mult;
-                double halfY = (original.maxY - original.minY) * 0.5 * mult;
-                double halfZ = (original.maxZ - original.minZ) * 0.5 * mult;
+                double halfX = (origWidth * 0.5) * mult;
+                double halfY = (origHeight * 0.5) * mult;
+                double halfZ = (origWidth * 0.5) * mult;
+
+                double cx = entity.posX;
+                double cy = entity.posY;
+                double cz = entity.posZ;
 
                 AxisAlignedBB expanded = new AxisAlignedBB(
                         cx - halfX, cy - halfY, cz - halfZ,
                         cx + halfX, cy + halfY, cz + halfZ);
 
                 entity.setEntityBoundingBox(expanded);
-                expandedBoxes.put(uuid, expanded);
             }
         } else if (disadvantage()) {
             EntityPlayer player = mc.thePlayer;
             UUID uuid = player.getUniqueID();
-            AxisAlignedBB original = originalBoxes.get(uuid);
+            double[] dims = originalDims.get(uuid);
 
-            if (original == null) {
-                original = player.getEntityBoundingBox();
-                originalBoxes.put(uuid, original);
+            if (dims == null) {
+                dims = new double[]{player.width, player.height};
+                originalDims.put(uuid, dims);
             }
 
-            double cx = (original.minX + original.maxX) * 0.5;
-            double cy = (original.minY + original.maxY) * 0.5;
-            double cz = (original.minZ + original.maxZ) * 0.5;
+            double origWidth = dims[0];
+            double origHeight = dims[1];
 
-            double halfX = (original.maxX - original.minX) * 0.5 * mult;
-            double halfY = (original.maxY - original.minY) * 0.5 * mult;
-            double halfZ = (original.maxZ - original.minZ) * 0.5 * mult;
+            double halfX = (origWidth * 0.5) * mult;
+            double halfY = (origHeight * 0.5) * mult;
+            double halfZ = (origWidth * 0.5) * mult;
+
+            double cx = player.posX;
+            double cy = player.posY;
+            double cz = player.posZ;
 
             AxisAlignedBB expanded = new AxisAlignedBB(
                     cx - halfX, cy - halfY, cz - halfZ,
                     cx + halfX, cy + halfY, cz + halfZ);
 
             player.setEntityBoundingBox(expanded);
-            expandedBoxes.put(uuid, expanded);
         }
     }
 
     @Override
     public void onEnable() {
-        originalBoxes.clear();
-        expandedBoxes.clear();
+        originalDims.clear();
     }
 
     @Override
@@ -135,11 +137,19 @@ public class Hitboxes extends Module {
         for (Entity entity : mc.theWorld.loadedEntityList) {
             if (entity instanceof EntityPlayer && entity != mc.thePlayer) {
                 UUID uuid = entity.getUniqueID();
-                AxisAlignedBB original = originalBoxes.get(uuid);
-                if (original != null) {
-                    entity.setEntityBoundingBox(original);
+                double[] dims = originalDims.get(uuid);
+                if (dims != null) {
+                    double w = dims[0] * 0.5;
+                    double h = dims[1];
+                    double yOffset = 0;
+                    if (entity instanceof EntityLivingBase) {
+                        yOffset = ((EntityLivingBase) entity).getEyeHeight() - h;
+                    }
+                    entity.setEntityBoundingBox(new AxisAlignedBB(
+                            entity.posX - w, entity.posY + yOffset, entity.posZ - w,
+                            entity.posX + w, entity.posY + yOffset + h, entity.posZ + w));
                 } else {
-                    double w = entity.width / 2.0;
+                    double w = entity.width * 0.5;
                     double h = entity.height;
                     double yOffset = 0;
                     if (entity instanceof EntityLivingBase) {
@@ -153,13 +163,20 @@ public class Hitboxes extends Module {
         }
         if (mc.thePlayer != null) {
             UUID uuid = mc.thePlayer.getUniqueID();
-            AxisAlignedBB original = originalBoxes.get(uuid);
-            if (original != null) {
-                mc.thePlayer.setEntityBoundingBox(original);
+            double[] dims = originalDims.get(uuid);
+            if (dims != null) {
+                double w = dims[0] * 0.5;
+                double h = dims[1];
+                double yOffset = 0;
+                if (mc.thePlayer instanceof EntityLivingBase) {
+                    yOffset = ((EntityLivingBase) mc.thePlayer).getEyeHeight() - h;
+                }
+                mc.thePlayer.setEntityBoundingBox(new AxisAlignedBB(
+                        mc.thePlayer.posX - w, mc.thePlayer.posY + yOffset, mc.thePlayer.posZ - w,
+                        mc.thePlayer.posX + w, mc.thePlayer.posY + yOffset + h, mc.thePlayer.posZ + w));
             }
         }
-        originalBoxes.clear();
-        expandedBoxes.clear();
+        originalDims.clear();
     }
 
     @SubscribeEvent
@@ -184,25 +201,57 @@ public class Hitboxes extends Module {
                 if (entity.isDead) continue;
 
                 UUID uuid = entity.getUniqueID();
-                AxisAlignedBB expanded = expandedBoxes.get(uuid);
-                if (expanded == null) continue;
+                double[] dims = originalDims.get(uuid);
+                if (dims == null) continue;
+
+                double mult = multiplierSetting.getValue();
+                double origWidth = dims[0];
+                double origHeight = dims[1];
+
+                double halfX = (origWidth * 0.5) * mult;
+                double halfY = (origHeight * 0.5) * mult;
+                double halfZ = (origWidth * 0.5) * mult;
+
+                double cx = entity.posX;
+                double cy = entity.posY;
+                double cz = entity.posZ;
+
+                AxisAlignedBB expanded = new AxisAlignedBB(
+                        cx - halfX, cy - halfY, cz - halfZ,
+                        cx + halfX, cy + halfY, cz + halfZ);
 
                 AxisAlignedBB box = AxisAlignedBB.fromBounds(
                         expanded.minX - camX, expanded.minY - camY, expanded.minZ - camZ,
                         expanded.maxX - camX, expanded.maxY - camY, expanded.maxZ - camZ);
 
-                RenderUtil.drawOutlinedBox(tessellator, box, r, g, b, a);
+                RenderUtil.drawOutlinedBox(tessellator, box, 255, 255, 255, a);
             }
         } else if (disadvantage()) {
             EntityPlayer player = mc.thePlayer;
             UUID uuid = player.getUniqueID();
-            AxisAlignedBB expanded = expandedBoxes.get(uuid);
-            if (expanded != null) {
+            double[] dims = originalDims.get(uuid);
+            if (dims != null) {
+                double mult = multiplierSetting.getValue();
+                double origWidth = dims[0];
+                double origHeight = dims[1];
+
+                double halfX = (origWidth * 0.5) * mult;
+                double halfY = (origHeight * 0.5) * mult;
+                double halfZ = (origWidth * 0.5) * mult;
+
+                double cx = player.posX;
+                double cy = player.posY;
+                double cz = player.posZ;
+
+                AxisAlignedBB expanded = new AxisAlignedBB(
+                        cx - halfX, cy - halfY, cz - halfZ,
+                        cx + halfX, cy + halfY, cz + halfZ);
+
                 AxisAlignedBB box = AxisAlignedBB.fromBounds(
                         expanded.minX - camX, expanded.minY - camY, expanded.minZ - camZ,
                         expanded.maxX - camX, expanded.maxY - camY, expanded.maxZ - camZ);
 
-                RenderUtil.drawOutlinedBox(tessellator, box, r, g, b, a);
+                RenderUtil.drawOutlinedBox(tessellator, box, 255, 255, 255, a);
             }
         }
 
