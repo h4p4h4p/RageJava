@@ -26,6 +26,7 @@ public class Hitboxes extends Module {
 
     private final Minecraft mc = Minecraft.getMinecraft();
     private final Map<UUID, AxisAlignedBB> originalBoxes = new HashMap<>();
+    private final Map<UUID, AxisAlignedBB> expandedBoxes = new HashMap<>();
 
     public Hitboxes() {
         super("Hitboxes", Category.COMBAT);
@@ -63,15 +64,19 @@ public class Hitboxes extends Module {
             double halfY = (original.maxY - original.minY) * 0.5 * mult;
             double halfZ = (original.maxZ - original.minZ) * 0.5 * mult;
 
-            entity.setEntityBoundingBox(new AxisAlignedBB(
+            AxisAlignedBB expanded = new AxisAlignedBB(
                     cx - halfX, cy - halfY, cz - halfZ,
-                    cx + halfX, cy + halfY, cz + halfZ));
+                    cx + halfX, cy + halfY, cz + halfZ);
+
+            entity.setEntityBoundingBox(expanded);
+            expandedBoxes.put(uuid, expanded);
         }
     }
 
     @Override
     public void onEnable() {
         originalBoxes.clear();
+        expandedBoxes.clear();
     }
 
     @Override
@@ -97,6 +102,7 @@ public class Hitboxes extends Module {
             }
         }
         originalBoxes.clear();
+        expandedBoxes.clear();
     }
 
     @SubscribeEvent
@@ -109,8 +115,6 @@ public class Hitboxes extends Module {
         double camY = mc.getRenderManager().viewerPosY;
         double camZ = mc.getRenderManager().viewerPosZ;
 
-        double mult = multiplierSetting.getValue();
-
         int r = 255, g = 255, b = 255, a = 180;
 
         GlStateManager.disableTexture2D();
@@ -121,10 +125,13 @@ public class Hitboxes extends Module {
             if (!(entity instanceof EntityPlayer)) continue;
             if (entity.isDead) continue;
 
-            AxisAlignedBB bb = entity.getEntityBoundingBox();
+            UUID uuid = entity.getUniqueID();
+            AxisAlignedBB expanded = expandedBoxes.get(uuid);
+            if (expanded == null) continue;
+
             AxisAlignedBB box = AxisAlignedBB.fromBounds(
-                    bb.minX - camX, bb.minY - camY, bb.minZ - camZ,
-                    bb.maxX - camX, bb.maxY - camY, bb.maxZ - camZ);
+                    expanded.minX - camX, expanded.minY - camY, expanded.minZ - camZ,
+                    expanded.maxX - camX, expanded.maxY - camY, expanded.maxZ - camZ);
 
             RenderUtil.drawOutlinedBox(tessellator, box, r, g, b, a);
         }
