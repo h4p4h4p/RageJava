@@ -24,10 +24,8 @@ public class DelayRemover extends Module {
 
     private static final String HANDLER_NAME = "ragejava_delayremover";
 
-    private final BooleanSetting jumpSetting = new BooleanSetting("Jump", true);
-    private final BooleanSetting breakSetting = new BooleanSetting("Break", true);
-    private final BooleanSetting hitSetting = new BooleanSetting("Hit", true);
-    private final BooleanSetting rehitSetting = new BooleanSetting("ReHit", false);
+    private final BooleanSetting jumpSetting = new BooleanSetting("Remove Jump Tick Delay", true);
+    private final BooleanSetting hitRegSetting = new BooleanSetting("Enable 1.7 Hit Regulation", false);
 
     private final Minecraft mc = Minecraft.getMinecraft();
     private DelayRemoverHandler handler;
@@ -37,14 +35,11 @@ public class DelayRemover extends Module {
     private boolean wasOnGround;
     private long lastJumpAt;
     private long lastHitPong;
-    private long lastBreakPong;
 
     public DelayRemover() {
         super("DelayRemover", Category.COMBAT);
         settings.add(jumpSetting);
-        settings.add(breakSetting);
-        settings.add(hitSetting);
-        settings.add(rehitSetting);
+        settings.add(hitRegSetting);
         MinecraftForge.EVENT_BUS.register(this);
     }
 
@@ -55,8 +50,7 @@ public class DelayRemover extends Module {
         if (mc.thePlayer == null || mc.theWorld == null) return;
         armChannel();
         handleJump();
-        handleBreak();
-        handleHit();
+        handleHitRegulation();
     }
 
     private void handleJump() {
@@ -80,45 +74,17 @@ public class DelayRemover extends Module {
         sendPlayerPing();
     }
 
-    private void handleBreak() {
-        if (!breakSetting.getValue()) return;
-        if (mc.playerController == null || !mc.playerController.getIsHittingBlock()) return;
-        if (mc.objectMouseOver == null || mc.objectMouseOver.typeOfHit != MovingObjectPosition.MovingObjectType.BLOCK) return;
-        BlockPos pos = mc.objectMouseOver.getBlockPos();
-        EnumFacing side = mc.objectMouseOver.sideHit;
-        if (pos == null || side == null) return;
-        if (mc.theWorld.getBlockState(pos).getBlock().isAir(mc.theWorld, pos)) return;
-
-        long now = System.currentTimeMillis();
-        if (now - lastBreakPong < 150) return;
-        lastBreakPong = now;
-
-        NetworkManager nm = mc.getNetHandler().getNetworkManager();
-        if (nm == null) return;
-        nm.sendPacket(new C07PacketPlayerDigging(C07PacketPlayerDigging.Action.START_DESTROY_BLOCK, pos, side));
-        nm.sendPacket(new C07PacketPlayerDigging(C07PacketPlayerDigging.Action.STOP_DESTROY_BLOCK, pos, side));
-        mc.thePlayer.swingItem();
-    }
-
-    private void handleHit() {
-        if (!hitSetting.getValue()) return;
-        Entity target = pendingAttack;
-        if (target == null) return;
-        pendingAttack = null;
-
-        long now = System.currentTimeMillis();
-        if (now - lastHitPong < 100) return;
-        lastHitPong = now;
-
-        if (rehitSetting.getValue() && mc.playerController != null) {
-            mc.playerController.attackEntity(mc.thePlayer, target);
-            sendPlayerPing();
-            if (target.isEntityAlive()) {
-                mc.playerController.attackEntity(mc.thePlayer, target);
+    private void handleHitRegulation() {
+        if (!hitRegSetting.getValue()) return;
+        if (pendingAttack != null) {
+            // Remove hurt time from the target entity (1.7 style - no invulnerability)
+            if (pendingAttack instanceof net.minecraft.entity.EntityLivingBase) {
+                net.minecraft.entity.EntityLivingBase target = (net.minecraft.entity.EntityLivingBase) pendingAttack;
+                if (target.hurtTime > 0) {
+                    target.hurtTime = 0;
+                }
+                pendingAttack = null;
             }
-        } else {
-            mc.thePlayer.swingItem();
-            sendPlayerPing();
         }
     }
 
