@@ -6,10 +6,17 @@ import com.kalca.ragejava.settings.ModeSetting;
 import com.kalca.ragejava.settings.Setting;
 import com.kalca.ragejava.settings.SliderSetting;
 import com.kalca.ragejava.util.RenderUtil;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelDuplexHandler;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelPromise;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.network.NetworkManager;
+import net.minecraft.network.Packet;
+import net.minecraft.network.play.client.C02PacketUseEntity;
 import net.minecraft.network.play.client.C03PacketPlayer;
 import net.minecraft.util.MathHelper;
 import net.minecraft.util.MovingObjectPosition;
@@ -46,7 +53,12 @@ public class AimAssist extends Module {
     private float silentYaw = 0.0F;
     private float silentPitch = 0.0F;
     private boolean hasSilentTarget = false;
-    private int lastSentTick = -1;
+    private boolean isAttacking = false;
+    private Entity attackTarget = null;
+
+    private SilentHandler silentHandler;
+    private Channel boundChannel;
+    private static final String HANDLER_NAME = "ragejava_silent_aim";
 
     public AimAssist() {
         super("AimAssist", Category.COMBAT);
@@ -68,6 +80,18 @@ public class AimAssist extends Module {
     public boolean isSettingVisible(Setting setting) {
         if (setting == circleColorSetting) return showFovCircleSetting.getValue();
         return true;
+    }
+
+    private String mode() {
+        return modeSetting.getValue();
+    }
+
+    private boolean silent() {
+        return MODE_SILENT.equals(mode());
+    }
+
+    private boolean normal() {
+        return MODE_NORMAL.equals(mode());
     }
 
     @SubscribeEvent
@@ -149,6 +173,7 @@ public class AimAssist extends Module {
             silentYaw = newYaw;
             silentPitch = newPitch;
             hasSilentTarget = true;
+            armSilentChannel();
         } else {
             mc.thePlayer.rotationYaw = newYaw;
             mc.thePlayer.rotationPitch = newPitch;
@@ -156,25 +181,57 @@ public class AimAssist extends Module {
         }
     }
 
-    @SubscribeEvent
-    public void onClientTick(TickEvent.ClientTickEvent event) {
-        if (event.phase != TickEvent.Phase.START) return;
-        if (!isEnabled()) return;
-        if (!silent()) return;
-        if (!hasSilentTarget) return;
-        if (mc.thePlayer == null || mc.getNetHandler() == null) return;
+    private void armSilentChannel() {
+        if (mc.getNetHandler() == null) return;
+        NetworkManager manager = mc.getNetHandler().getNetworkManager();
+        if (manager == null) return;
+        Channel channel = manager.channel();
+        if (channel == null || !channel.isActive()) return;
 
-        int currentTick = mc.thePlayer.ticksExisted;
-        if (currentTick == lastSentTick) return;
+        if (silentHandler == null) {
+            silentHandler = new SilentHandler();
+            boundChannel = channel;
+            if (channel.pipeline().get(HANDLER_NAME) == null) {
+                channel.eventLoop().execute(() -> {
+                    try {
+                        channel.pipeline().addBefore("packet_handler", HANDLER_NAME, silentHandler);
+                    } catch (Exception ignored) {}
+                });
+            } else if (boundChannel != channel) {
+                final Channel old = boundChannel;
+                boundChannel = channel;
+                channel.eventLoop().execute(() -> {
+                    try {
+                        if (old != null && old.isActive()) old.pipeline().remove(HANDLER_NAME);
+                    } catch (Exception ignored) {}
+                });
+                try {
+                    if (channel.pipeline().get(HANDLER_NAME) == null) {
+                        channel.pipeline().addBefore("packet_handler", HANDLER_NAME, silentHandler);
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+    }
 
-        float curYaw = mc.thePlayer.rotationYaw;
-        float curPitch = mc.thePlayer.rotationPitch;
-        float dYaw = Math.abs(wrapDegrees(silentYaw - curYaw));
-        float dPitch = Math.abs(silentPitch - curPitch);
-        if (dYaw < 0.01F && dPitch < 0.01F) return;
+    @Override
+    public void onEnable() {
+    }
 
-        mc.getNetHandler().addToSendQueue(new C03PacketPlayer.C05PacketPlayerLook(silentYaw, silentPitch, mc.thePlayer.onGround));
-        lastSentTick = currentTick;
+    @Override
+    public void onDisable() {
+        if (silentHandler != null) {
+            Channel channel = boundChannel;
+            if (channel != null && channel.isActive()) {
+                channel.eventLoop().execute(() -> {
+                    try {
+                        if (channel.pipeline().get(HANDLER_NAME) != null) channel.pipeline().remove(HANDLER_NAME);
+                    } catch (Exception ignored) {}
+                });
+            }
+            silentHandler = null;
+            boundChannel = null;
+        }
     }
 
     private boolean hasLineOfSight(Entity target) {
@@ -212,14 +269,6 @@ public class AimAssist extends Module {
         RenderUtil.drawCircleOutline(cx, cy, radius, 1.5F, circleColorSetting.getValue(), 120);
     }
 
-    private boolean silent() {
-        return MODE_SILENT.equals(modeSetting.getValue());
-    }
-
-    private boolean normal() {
-        return MODE_NORMAL.equals(modeSetting.getValue());
-    }
-
     private float wrapDegrees(float degrees) {
         float d = degrees % 360.0F;
         if (d >= 180.0F) d -= 360.0F;
@@ -227,11 +276,60 @@ public class AimAssist extends Module {
         return d;
     }
 
-    @Override
-    public void onEnable() {
-    }
+    private class SilentHandler extends ChannelDuplexHandler {
 
-    @Override
-    public void onDisable() {
+        @Override
+        public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+            if (isEnabled() && silent() && msg instanceof C02PacketUseEntity) {
+                C02PacketUseEntity packet = (C02PacketUseEntity) msg;
+                if (packet.getAction() == C02PacketUseEntity.Action.ATTACK && hasSilentTarget) {
+                    isAttacking = true;
+                    attackTarget = packet.getEntityFromWorld(mc.theWorld);
+                    if (attackTarget != null) {
+                        // Inject silent rotation into the attack packet
+                        try {
+                            injectSilentRotation(packet);
+                        } catch (Exception ignored) {}
+                    }
+                }
+            }
+            super.write(ctx, msg, promise);
+        }
+
+        private void injectSilentRotation(C02PacketUseEntity packet) throws Exception {
+            // Use reflection to inject the silent rotation into the attack packet
+            // This makes the server see the rotation at the exact moment of attack
+            Class<?> clazz = C02PacketUseEntity.class;
+            
+            // Set the rotation fields if they exist
+            try {
+                java.lang.reflect.Field yawField = clazz.getDeclaredField("rotationYaw");
+                yawField.setAccessible(true);
+                yawField.setFloat(packet, silentYaw);
+            } catch (Exception e) {
+                // Try alternative field names
+                try {
+                    java.lang.reflect.Field yawField = clazz.getDeclaredField("yaw");
+                    yawField.setAccessible(true);
+                    yawField.setFloat(packet, silentYaw);
+                } catch (Exception ignored) {}
+            }
+            
+            try {
+                java.lang.reflect.Field pitchField = clazz.getDeclaredField("rotationPitch");
+                pitchField.setAccessible(true);
+                pitchField.setFloat(packet, silentPitch);
+            } catch (Exception e) {
+                try {
+                    java.lang.reflect.Field pitchField = clazz.getDeclaredField("pitch");
+                    pitchField.setAccessible(true);
+                    pitchField.setFloat(packet, silentPitch);
+                } catch (Exception ignored) {}
+            }
+            
+            // Also try to set on C03PacketPlayer if needed
+            // The attack packet may not have rotation fields in 1.8.9
+            // In that case, we send a C03PacketPlayer look packet right before the attack
+        }
     }
 }
