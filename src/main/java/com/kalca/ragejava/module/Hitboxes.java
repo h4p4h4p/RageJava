@@ -1,6 +1,8 @@
 package com.kalca.ragejava.module;
 
 import com.kalca.ragejava.settings.BooleanSetting;
+import com.kalca.ragejava.settings.ModeSetting;
+import com.kalca.ragejava.settings.Setting;
 import com.kalca.ragejava.settings.SliderSetting;
 import com.kalca.ragejava.util.RenderUtil;
 import net.minecraft.client.Minecraft;
@@ -21,6 +23,10 @@ import java.util.UUID;
 
 public class Hitboxes extends Module {
 
+    public static final String MODE_STANDARD = "Standard";
+    public static final String MODE_DISADVANTAGE = "Disadvantage";
+
+    private final ModeSetting modeSetting = new ModeSetting("Mode", new String[]{MODE_STANDARD, MODE_DISADVANTAGE}, 0);
     private final SliderSetting multiplierSetting = new SliderSetting("Multiplier", 1.5, 1.0, 5.0, 0.05);
     private final BooleanSetting espSetting = new BooleanSetting("Show Hitboxes", false);
 
@@ -30,9 +36,27 @@ public class Hitboxes extends Module {
 
     public Hitboxes() {
         super("Hitboxes", Category.COMBAT);
+        settings.add(modeSetting);
         settings.add(multiplierSetting);
         settings.add(espSetting);
         MinecraftForge.EVENT_BUS.register(this);
+    }
+
+    @Override
+    public boolean isSettingVisible(Setting setting) {
+        return true;
+    }
+
+    private String mode() {
+        return modeSetting.getValue();
+    }
+
+    private boolean standard() {
+        return MODE_STANDARD.equals(mode());
+    }
+
+    private boolean disadvantage() {
+        return MODE_DISADVANTAGE.equals(mode());
     }
 
     @SubscribeEvent
@@ -43,16 +67,42 @@ public class Hitboxes extends Module {
 
         double mult = multiplierSetting.getValue();
 
-        for (Entity entity : mc.theWorld.loadedEntityList) {
-            if (entity == mc.thePlayer) continue;
-            if (!(entity instanceof EntityPlayer)) continue;
-            if (entity.isDead) continue;
+        if (standard()) {
+            for (Entity entity : mc.theWorld.loadedEntityList) {
+                if (entity == mc.thePlayer) continue;
+                if (!(entity instanceof EntityPlayer)) continue;
+                if (entity.isDead) continue;
 
-            UUID uuid = entity.getUniqueID();
+                UUID uuid = entity.getUniqueID();
+                AxisAlignedBB original = originalBoxes.get(uuid);
+
+                if (original == null) {
+                    original = entity.getEntityBoundingBox();
+                    originalBoxes.put(uuid, original);
+                }
+
+                double cx = (original.minX + original.maxX) * 0.5;
+                double cy = (original.minY + original.maxY) * 0.5;
+                double cz = (original.minZ + original.maxZ) * 0.5;
+
+                double halfX = (original.maxX - original.minX) * 0.5 * mult;
+                double halfY = (original.maxY - original.minY) * 0.5 * mult;
+                double halfZ = (original.maxZ - original.minZ) * 0.5 * mult;
+
+                AxisAlignedBB expanded = new AxisAlignedBB(
+                        cx - halfX, cy - halfY, cz - halfZ,
+                        cx + halfX, cy + halfY, cz + halfZ);
+
+                entity.setEntityBoundingBox(expanded);
+                expandedBoxes.put(uuid, expanded);
+            }
+        } else if (disadvantage()) {
+            EntityPlayer player = mc.thePlayer;
+            UUID uuid = player.getUniqueID();
             AxisAlignedBB original = originalBoxes.get(uuid);
 
             if (original == null) {
-                original = entity.getEntityBoundingBox();
+                original = player.getEntityBoundingBox();
                 originalBoxes.put(uuid, original);
             }
 
@@ -68,7 +118,7 @@ public class Hitboxes extends Module {
                     cx - halfX, cy - halfY, cz - halfZ,
                     cx + halfX, cy + halfY, cz + halfZ);
 
-            entity.setEntityBoundingBox(expanded);
+            player.setEntityBoundingBox(expanded);
             expandedBoxes.put(uuid, expanded);
         }
     }
@@ -101,6 +151,13 @@ public class Hitboxes extends Module {
                 }
             }
         }
+        if (mc.thePlayer != null) {
+            UUID uuid = mc.thePlayer.getUniqueID();
+            AxisAlignedBB original = originalBoxes.get(uuid);
+            if (original != null) {
+                mc.thePlayer.setEntityBoundingBox(original);
+            }
+        }
         originalBoxes.clear();
         expandedBoxes.clear();
     }
@@ -120,20 +177,33 @@ public class Hitboxes extends Module {
         GlStateManager.disableTexture2D();
         Tessellator tessellator = Tessellator.getInstance();
 
-        for (Entity entity : mc.theWorld.loadedEntityList) {
-            if (entity == mc.thePlayer) continue;
-            if (!(entity instanceof EntityPlayer)) continue;
-            if (entity.isDead) continue;
+        if (standard()) {
+            for (Entity entity : mc.theWorld.loadedEntityList) {
+                if (entity == mc.thePlayer) continue;
+                if (!(entity instanceof EntityPlayer)) continue;
+                if (entity.isDead) continue;
 
-            UUID uuid = entity.getUniqueID();
+                UUID uuid = entity.getUniqueID();
+                AxisAlignedBB expanded = expandedBoxes.get(uuid);
+                if (expanded == null) continue;
+
+                AxisAlignedBB box = AxisAlignedBB.fromBounds(
+                        expanded.minX - camX, expanded.minY - camY, expanded.minZ - camZ,
+                        expanded.maxX - camX, expanded.maxY - camY, expanded.maxZ - camZ);
+
+                RenderUtil.drawOutlinedBox(tessellator, box, r, g, b, a);
+            }
+        } else if (disadvantage()) {
+            EntityPlayer player = mc.thePlayer;
+            UUID uuid = player.getUniqueID();
             AxisAlignedBB expanded = expandedBoxes.get(uuid);
-            if (expanded == null) continue;
+            if (expanded != null) {
+                AxisAlignedBB box = AxisAlignedBB.fromBounds(
+                        expanded.minX - camX, expanded.minY - camY, expanded.minZ - camZ,
+                        expanded.maxX - camX, expanded.maxY - camY, expanded.maxZ - camZ);
 
-            AxisAlignedBB box = AxisAlignedBB.fromBounds(
-                    expanded.minX - camX, expanded.minY - camY, expanded.minZ - camZ,
-                    expanded.maxX - camX, expanded.maxY - camY, expanded.maxZ - camZ);
-
-            RenderUtil.drawOutlinedBox(tessellator, box, r, g, b, a);
+                RenderUtil.drawOutlinedBox(tessellator, box, r, g, b, a);
+            }
         }
 
         GlStateManager.enableTexture2D();
