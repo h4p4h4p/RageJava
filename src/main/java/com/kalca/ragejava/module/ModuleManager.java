@@ -10,8 +10,8 @@ public class ModuleManager {
     public ModuleManager() {
         modules.add(new Speed());
         modules.add(new Sprint());
-        modules.add(new Eagle());
         modules.add(new Internet());
+        modules.add(new Hitboxes());
         modules.add(new LeftClicker());
         modules.add(new AimAssist());
         modules.add(new Backtrack());
