@@ -206,12 +206,11 @@ public class Esp extends Module {
         for (int i = 0; i < players.size(); i++) {
             Entity entity = players.get(i);
             if (entity == mc.thePlayer) continue;
-            
+
             // Use original entity width/height instead of modified bounding box
             double width = entity.width;
             double height = entity.height;
             double halfW = width * 0.5;
-            double halfH = height * 0.5;
 
             if (RenderUtil.pointNearBox(camX, camY, camZ, entity.getEntityBoundingBox(), NEAR_CAMERA_MARGIN)) continue;
 
@@ -222,15 +221,14 @@ public class Esp extends Module {
             double oz = entity.lastTickPosZ + (entity.posZ - entity.lastTickPosZ) * partialTicks - entity.posZ;
 
             double cx = entity.posX + ox;
-            double cy = entity.posY + oy;
             double cz = entity.posZ + oz;
 
             double minX = cx - halfW - camX;
-            double minY = cy - halfH - camY;
-            double minZ = cz - halfW - camZ;
+            double minY = entity.posY + oy - camY;
+            double minZ = entity.posZ + oz - halfW - camZ;
             double maxX = cx + halfW - camX;
-            double maxY = cy + halfH - camY;
-            double maxZ = cz + halfW - camZ;
+            double maxY = entity.posY + oy + entity.height - camY;
+            double maxZ = entity.posZ + oz + halfW - camZ;
 
             // Filled box (semi-transparent)
             int fillAlpha = 100;
@@ -238,9 +236,9 @@ public class Esp extends Module {
 
             // Name above box
             if (namesSetting.getValue()) {
-                double midX = (minX + maxX) * 0.5;
-                double midZ = (minZ + maxZ) * 0.5;
-                double maxYScreen = cy + halfH + oy - camY;
+                double midX = (cx - halfW + cx + halfW) * 0.5;
+                double midZ = (entity.posZ + oz - halfW + entity.posZ + oz + halfW) * 0.5;
+                double maxYScreen = entity.posY + oy + entity.height + 0.3 - camY;
                 if (project(midX - camX, maxYScreen + 0.3, midZ - camZ, feetScratch)) {
                     storeName(entity.getName(), feetScratch[0], feetScratch[1]);
                 }
