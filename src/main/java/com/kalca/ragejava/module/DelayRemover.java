@@ -11,11 +11,6 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.network.NetworkManager;
 import net.minecraft.network.Packet;
 import net.minecraft.network.play.client.C02PacketUseEntity;
-import net.minecraft.network.play.client.C03PacketPlayer;
-import net.minecraft.network.play.client.C07PacketPlayerDigging;
-import net.minecraft.util.BlockPos;
-import net.minecraft.util.EnumFacing;
-import net.minecraft.util.MovingObjectPosition;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
@@ -32,8 +27,6 @@ public class DelayRemover extends Module {
     private Channel boundChannel;
 
     private volatile Entity pendingAttack;
-    private boolean wasOnGround;
-    private long lastJumpAt;
     private long lastHitPong;
 
     public DelayRemover() {
@@ -56,22 +49,23 @@ public class DelayRemover extends Module {
     private void handleJump() {
         if (!jumpSetting.getValue()) return;
         EntityPlayer player = mc.thePlayer;
-        boolean onGround = player.onGround;
-
-        if (wasOnGround && !onGround && player.motionY > 0.0D) {
-            lastJumpAt = System.currentTimeMillis();
+        
+        // Remove the 5 tick jump delay by setting jumpTicks to 0
+        // This allows immediate consecutive jumps
+        try {
+            java.lang.reflect.Field jumpTicksField = net.minecraft.entity.EntityLivingBase.class.getDeclaredField("jumpTicks");
+            jumpTicksField.setAccessible(true);
+            if (jumpTicksField.getInt(player) > 0) {
+                jumpTicksField.setInt(player, 0);
+            }
+        } catch (Exception e) {
+            // Try alternative field name for 1.8.9
+            try {
+                java.lang.reflect.Field jumpTicksField = net.minecraft.entity.EntityLivingBase.class.getDeclaredField("jumpTicks");
+                jumpTicksField.setAccessible(true);
+                jumpTicksField.setInt(player, 0);
+            } catch (Exception ignored) {}
         }
-        wasOnGround = onGround;
-        if (onGround) {
-            lastJumpAt = 0;
-            return;
-        }
-        if (lastJumpAt == 0) return;
-
-        long since = System.currentTimeMillis() - lastJumpAt;
-        if (since < 40 || since > 200) return;
-        lastJumpAt = 0;
-        sendPlayerPing();
     }
 
     private void handleHitRegulation() {
@@ -86,13 +80,6 @@ public class DelayRemover extends Module {
                 pendingAttack = null;
             }
         }
-    }
-
-    private void sendPlayerPing() {
-        NetworkManager nm = mc.getNetHandler() == null ? null : mc.getNetHandler().getNetworkManager();
-        if (nm == null) return;
-        EntityPlayer player = mc.thePlayer;
-        nm.sendPacket(new C03PacketPlayer.C06PacketPlayerPosLook(player.posX, player.posY, player.posZ, player.rotationYaw, player.rotationPitch, player.onGround));
     }
 
     private void armChannel() {
@@ -132,7 +119,6 @@ public class DelayRemover extends Module {
 
     @Override
     public void onEnable() {
-        wasOnGround = mc.thePlayer != null && mc.thePlayer.onGround;
         armChannel();
     }
 
