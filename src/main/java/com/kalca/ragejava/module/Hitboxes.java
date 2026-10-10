@@ -125,9 +125,10 @@ public class Hitboxes extends Module {
             AxisAlignedBB original = originalBoxes.get(uuid);
             if (original == null) continue;
 
-            double cx = (original.minX + original.maxX) * 0.5;
-            double cy = (original.minY + original.maxY) * 0.5;
-            double cz = (original.minZ + original.maxZ) * 0.5;
+            // Use current entity position, but original dimensions
+            double cx = entity.posX;
+            double cy = entity.posY + (original.maxY - original.minY) * 0.5 - entity.height * 0.5;
+            double cz = entity.posZ;
 
             double halfX = (original.maxX - original.minX) * 0.5 * mult;
             double halfY = (original.maxY - original.minY) * 0.5 * mult;
