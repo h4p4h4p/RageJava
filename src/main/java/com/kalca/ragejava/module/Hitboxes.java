@@ -121,22 +121,10 @@ public class Hitboxes extends Module {
             if (!(entity instanceof EntityPlayer)) continue;
             if (entity.isDead) continue;
 
-            UUID uuid = entity.getUniqueID();
-            AxisAlignedBB original = originalBoxes.get(uuid);
-            if (original == null) continue;
-
-            // Use current entity position, but original dimensions
-            double cx = entity.posX;
-            double cy = entity.posY + (original.maxY - original.minY) * 0.5 - entity.height * 0.5;
-            double cz = entity.posZ;
-
-            double halfX = (original.maxX - original.minX) * 0.5 * mult;
-            double halfY = (original.maxY - original.minY) * 0.5 * mult;
-            double halfZ = (original.maxZ - original.minZ) * 0.5 * mult;
-
+            AxisAlignedBB bb = entity.getEntityBoundingBox();
             AxisAlignedBB box = AxisAlignedBB.fromBounds(
-                    cx - halfX - camX, cy - halfY - camY, cz - halfZ - camZ,
-                    cx + halfX - camX, cy + halfY - camY, cz + halfZ - camZ);
+                    bb.minX - camX, bb.minY - camY, bb.minZ - camZ,
+                    bb.maxX - camX, bb.maxY - camY, bb.maxZ - camZ);
 
             RenderUtil.drawOutlinedBox(tessellator, box, r, g, b, a);
         }
