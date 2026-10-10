@@ -10,6 +10,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.network.play.client.C03PacketPlayer;
 import net.minecraft.util.MathHelper;
 import net.minecraft.util.MovingObjectPosition;
 import net.minecraft.util.Vec3;
@@ -24,6 +25,10 @@ public class AimAssist extends Module {
     public static final String TARGET_TORSO = "Torso";
     public static final String TARGET_LEGS = "Legs";
 
+    public static final String MODE_NORMAL = "Normal";
+    public static final String MODE_SILENT = "Silent";
+
+    private final ModeSetting modeSetting = new ModeSetting("Mode", new String[]{MODE_NORMAL, MODE_SILENT}, 0);
     private final SliderSetting xSmoothSetting = new SliderSetting("X Smooth", 30, 0, 100, 1);
     private final SliderSetting ySmoothSetting = new SliderSetting("Y Smooth", 30, 0, 100, 1);
     private final SliderSetting sensitivitySetting = new SliderSetting("Sensitivity", 1.0, 0.1, 3.0, 0.05);
@@ -39,6 +44,7 @@ public class AimAssist extends Module {
 
     public AimAssist() {
         super("AimAssist", Category.COMBAT);
+        settings.add(modeSetting);
         settings.add(xSmoothSetting);
         settings.add(ySmoothSetting);
         settings.add(sensitivitySetting);
@@ -133,8 +139,12 @@ public class AimAssist extends Module {
         float newYaw = curYaw + wrapDegrees(targetYaw - curYaw) * yawFactor;
         float newPitch = MathHelper.clamp_float(curPitch + (targetPitch - curPitch) * pitchFactor, -90.0F, 90.0F);
 
-        mc.thePlayer.rotationYaw = newYaw;
-        mc.thePlayer.rotationPitch = newPitch;
+        if (silent()) {
+            mc.getNetHandler().addToSendQueue(new net.minecraft.network.play.client.C03PacketPlayer.C05PacketPlayerLook(newYaw, newPitch, mc.thePlayer.onGround));
+        } else {
+            mc.thePlayer.rotationYaw = newYaw;
+            mc.thePlayer.rotationPitch = newPitch;
+        }
     }
 
     private boolean hasLineOfSight(Entity target) {
@@ -170,6 +180,14 @@ public class AimAssist extends Module {
         radius = Math.min(radius, cy);
 
         RenderUtil.drawCircleOutline(cx, cy, radius, 1.5F, circleColorSetting.getValue(), 120);
+    }
+
+    private boolean silent() {
+        return MODE_SILENT.equals(modeSetting.getValue());
+    }
+
+    private boolean normal() {
+        return MODE_NORMAL.equals(modeSetting.getValue());
     }
 
     private float wrapDegrees(float degrees) {
