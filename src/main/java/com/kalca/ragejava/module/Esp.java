@@ -200,6 +200,7 @@ public class Esp extends Module {
 
         GlStateManager.disableTexture2D();
         GlStateManager.enableBlend();
+        GlStateManager.disableCull();
         GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, 1, 0);
         Tessellator tessellator = Tessellator.getInstance();
         List<net.minecraft.entity.player.EntityPlayer> players = mc.theWorld.playerEntities;
@@ -245,6 +246,7 @@ public class Esp extends Module {
             }
         }
 
+        GlStateManager.enableCull();
         GlStateManager.disableBlend();
         GlStateManager.enableTexture2D();
     }

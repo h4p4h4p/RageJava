@@ -51,37 +51,37 @@ public class RenderUtil {
         WorldRenderer wr = tessellator.getWorldRenderer();
         wr.begin(7, DefaultVertexFormats.POSITION_COLOR);
         
-        // Bottom (minY)
-        vertex(wr, minX, minY, minZ, r, g, b, a);
-        vertex(wr, maxX, minY, minZ, r, g, b, a);
-        vertex(wr, maxX, minY, maxZ, r, g, b, a);
+        // Bottom (minY) - CCW from outside (viewed from below)
         vertex(wr, minX, minY, maxZ, r, g, b, a);
+        vertex(wr, maxX, minY, maxZ, r, g, b, a);
+        vertex(wr, maxX, minY, minZ, r, g, b, a);
+        vertex(wr, minX, minY, minZ, r, g, b, a);
         
-        // Top (maxY)
+        // Top (maxY) - CCW from outside (above)
         vertex(wr, minX, maxY, minZ, r, g, b, a);
         vertex(wr, maxX, maxY, minZ, r, g, b, a);
         vertex(wr, maxX, maxY, maxZ, r, g, b, a);
         vertex(wr, minX, maxY, maxZ, r, g, b, a);
         
-        // Front (maxZ)
+        // Front (maxZ) - CCW from outside (front)
         vertex(wr, minX, minY, maxZ, r, g, b, a);
         vertex(wr, maxX, minY, maxZ, r, g, b, a);
         vertex(wr, maxX, maxY, maxZ, r, g, b, a);
         vertex(wr, minX, maxY, maxZ, r, g, b, a);
         
-        // Back (minZ)
+        // Back (minZ) - CCW from outside (back)
         vertex(wr, maxX, minY, minZ, r, g, b, a);
         vertex(wr, minX, minY, minZ, r, g, b, a);
         vertex(wr, minX, maxY, minZ, r, g, b, a);
         vertex(wr, maxX, maxY, minZ, r, g, b, a);
         
-        // Left (minX)
+        // Left (minX) - CCW from outside (left)
         vertex(wr, minX, minY, minZ, r, g, b, a);
         vertex(wr, minX, minY, maxZ, r, g, b, a);
         vertex(wr, minX, maxY, maxZ, r, g, b, a);
         vertex(wr, minX, maxY, minZ, r, g, b, a);
         
-        // Right (maxX)
+        // Right (maxX) - CCW from outside (right)
         vertex(wr, maxX, minY, maxZ, r, g, b, a);
         vertex(wr, maxX, minY, minZ, r, g, b, a);
         vertex(wr, maxX, maxY, minZ, r, g, b, a);
