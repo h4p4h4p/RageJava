@@ -15,7 +15,6 @@ public class ModuleManager {
         modules.add(new LeftClicker());
         modules.add(new AimAssist());
         modules.add(new Backtrack());
-        modules.add(new DelayRemover());
         modules.add(new BlockHit());
         modules.add(new RightClicker());
         modules.add(new Velocity());
