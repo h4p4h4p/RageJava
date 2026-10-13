@@ -148,7 +148,6 @@ public class ModuleButton {
     public void draw(float mx, float my) {
         refreshWidgets();
         boolean hovered = mx >= x && mx <= x + width && my >= y && my <= y + ROW_HEIGHT;
-        boolean hoverExpand = hovered && mx > x + width - EXPAND_ZONE;
 
         if (module.isEnabled()) {
             RenderUtil.drawRect(x, y, 2, ROW_HEIGHT, Theme.ACCENT);
@@ -168,7 +167,7 @@ public class ModuleButton {
             RenderUtil.drawString(tag, tagX, y + (ROW_HEIGHT - RenderUtil.getTextHeight()) / 2f, tagColor);
         }
 
-        RenderUtil.drawString("...", x + width - EXPAND_ZONE + 3, y + (ROW_HEIGHT - RenderUtil.getTextHeight()) / 2f, hoverExpand ? Theme.ACCENT : Theme.TEXT_GRAY);
+        
 
         if (expanded) {
             float wh = Math.max(widgetsHeight(), getPreviewMinHeight());
