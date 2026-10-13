@@ -48,6 +48,14 @@ public class ClickGUI extends GuiScreen {
     @Override
     public void initGui() {
         layout();
+        // Calculate uniform panel width (max of all panels)
+        float maxWidth = 0f;
+        for (Panel panel : panels) {
+            maxWidth = Math.max(maxWidth, panel.getWidth());
+        }
+        for (Panel panel : panels) {
+            panel.setForcedWidth(maxWidth);
+        }
         float x = PANEL_MARGIN / 2f;
         for (Panel panel : panels) {
             panel.setPosition(x, PANEL_MARGIN / 2f);
@@ -79,6 +87,15 @@ public class ClickGUI extends GuiScreen {
     }
 
     private void reflow() {
+        // Recalculate uniform width
+        float maxWidth = 0f;
+        for (Panel panel : panels) {
+            maxWidth = Math.max(maxWidth, panel.getWidth());
+        }
+        for (Panel panel : panels) {
+            panel.setForcedWidth(maxWidth);
+        }
+
         float nx = PANEL_MARGIN / 2f;
         for (int i = 0; i < panels.size(); i++) {
             Panel panel = panels.get(i);

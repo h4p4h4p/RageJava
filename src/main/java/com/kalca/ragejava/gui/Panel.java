@@ -11,7 +11,7 @@ import java.util.List;
 public class Panel {
 
     private static final float HEADER_HEIGHT = 16f;
-    private static final float WIDTH = 122f;
+    private static final float DEFAULT_WIDTH = 122f;
     private static final float SCROLLBAR_W = 3f;
     private static final float WHEEL_STEP = 14f;
 
@@ -30,6 +30,8 @@ public class Panel {
 
     private boolean draggingScrollbar;
     private float scrollGrab;
+
+    private float forcedWidth = -1f;
 
     public Panel(Category category, ClickGUI gui) {
         this.category = category;
@@ -87,7 +89,8 @@ public class Panel {
     }
 
     public float getWidth() {
-        float w = WIDTH;
+        if (forcedWidth > 0f) return forcedWidth;
+        float w = DEFAULT_WIDTH;
         for (ModuleButton button : visibleButtons()) {
             float bw = RenderUtil.getTextWidth(button.getModule().getName());
             float bindW = button.getBindWidget() == null ? 0 : RenderUtil.getTextWidth(button.getBindWidget().keyName());
@@ -104,6 +107,10 @@ public class Panel {
         }
         if (hasScrollbar()) w += SCROLLBAR_W + 2f;
         return w;
+    }
+
+    public void setForcedWidth(float width) {
+        this.forcedWidth = width;
     }
 
     public float getHeight() {
