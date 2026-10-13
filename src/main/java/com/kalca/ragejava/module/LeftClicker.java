@@ -22,7 +22,7 @@ public class LeftClicker extends Module {
     private final SliderSetting delaySetting = new SliderSetting("Delay", 100, 0, 1000, 10);
     private final SliderSetting cpsSetting = new SliderSetting("CPS", 12, 1, 24, 1);
     private final SliderSetting ncpCpsSetting = new SliderSetting("NCP CPS", 12, 1, 18, 1);
-    private final SliderSetting randomSetting = new SliderSetting("Randomization", 0, 0, 100, 5);
+    private final SliderSetting jitterSetting = new SliderSetting("Jitter", 0, 0, 100, 5);
     private final SliderSetting dropChanceSetting = new SliderSetting("Drop Chance", 0, 0, 95, 5);
     private final BooleanSetting blockHitSetting = new BooleanSetting("BlockHit", false);
     private final SliderSetting blockHitCpsSetting = new SliderSetting("BlockHit CPS", 12, 1, 20, 1);
@@ -38,7 +38,7 @@ public class LeftClicker extends Module {
         settings.add(delaySetting);
         settings.add(cpsSetting);
         settings.add(ncpCpsSetting);
-        settings.add(randomSetting);
+        settings.add(jitterSetting);
         settings.add(dropChanceSetting);
         settings.add(blockHitSetting);
         settings.add(blockHitCpsSetting);
@@ -156,7 +156,7 @@ public class LeftClicker extends Module {
     }
 
     private double jitterFactor() {
-        return 1.0 + (Math.random() * 2.0 - 1.0) * (randomSetting.getValue() / 100.0);
+        return 1.0 + (Math.random() * 2.0 - 1.0) * (jitterSetting.getValue() / 100.0);
     }
 
     private boolean triggerMode() {
