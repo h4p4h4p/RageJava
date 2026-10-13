@@ -25,7 +25,6 @@ public class LeftClicker extends Module {
     private final SliderSetting jitterSetting = new SliderSetting("Jitter", 0, 0, 100, 5);
     private final SliderSetting dropChanceSetting = new SliderSetting("Drop Chance", 0, 0, 95, 5);
     private final BooleanSetting blockHitSetting = new BooleanSetting("BlockHit", false);
-    private final SliderSetting blockHitCpsSetting = new SliderSetting("BlockHit CPS", 12, 1, 20, 1);
 
     private final Minecraft mc = Minecraft.getMinecraft();
     private boolean wasDown;
@@ -41,7 +40,6 @@ public class LeftClicker extends Module {
         settings.add(jitterSetting);
         settings.add(dropChanceSetting);
         settings.add(blockHitSetting);
-        settings.add(blockHitCpsSetting);
         MinecraftForge.EVENT_BUS.register(this);
     }
 
@@ -52,7 +50,6 @@ public class LeftClicker extends Module {
         boolean blockHit = blockHitSetting.getValue();
         if (setting == cpsSetting) return !ncp && !blockHit;
         if (setting == ncpCpsSetting) return ncp;
-        if (setting == blockHitCpsSetting) return blockHit;
         if (setting == dropChanceSetting) return ncp;
         return true;
     }
@@ -99,9 +96,13 @@ public class LeftClicker extends Module {
 
             if (mc.thePlayer.ticksExisted == lastAttackTick) return;
 
-            double cps = blockHitCpsSetting.getValue();
+            // Use the mode's CPS setting (NCP CPS for NCP mode, regular CPS otherwise)
+            double cps = ncp ? ncpCpsSetting.getValue() : cpsSetting.getValue();
             if (cps <= 0) return;
             double chance = Math.min(1.0, (cps / 20.0) * jitterFactor());
+
+            // Built-in tick spreader for NCP mode
+            if (ncp && mc.thePlayer.ticksExisted % 2 != 0) return;
 
             if (Math.random() < chance) {
                 blockHitClick();
