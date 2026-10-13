@@ -17,8 +17,9 @@ public class LeftClicker extends Module {
     public static final String MODE_NORMAL = "Normal";
     public static final String MODE_TRIGGER = "Trigger";
     public static final String MODE_NCP = "NCP";
+    public static final String MODE_BLOCKHIT = "BlockHit";
 
-    private final ModeSetting modeSetting = new ModeSetting("Mode", new String[]{MODE_NORMAL, MODE_TRIGGER, MODE_NCP}, 0);
+    private final ModeSetting modeSetting = new ModeSetting("Mode", new String[]{MODE_NORMAL, MODE_TRIGGER, MODE_NCP, MODE_BLOCKHIT}, 0);
     private final SliderSetting delaySetting = new SliderSetting("Delay", 100, 0, 1000, 10);
     private final SliderSetting cpsSetting = new SliderSetting("CPS", 12, 1, 24, 1);
     private final SliderSetting ncpCpsSetting = new SliderSetting("NCP CPS", 12, 1, 18, 1);
@@ -27,6 +28,7 @@ public class LeftClicker extends Module {
     private final SliderSetting holdDurationSetting = new SliderSetting("Hold Duration", 50, 10, 200, 10);
     private final BooleanSetting tickSpreaderSetting = new BooleanSetting("Tick Spreader", false);
     private final SliderSetting dropChanceSetting = new SliderSetting("Drop Chance", 0, 0, 95, 5);
+    private final SliderSetting blockHitCpsSetting = new SliderSetting("BlockHit CPS", 12, 1, 20, 1);
 
     private final Minecraft mc = Minecraft.getMinecraft();
     private boolean wasDown;
@@ -50,9 +52,12 @@ public class LeftClicker extends Module {
 
     @Override
     public boolean isSettingVisible(Setting setting) {
-        boolean ncp = MODE_NCP.equals(modeSetting.getValue());
-        if (setting == cpsSetting) return !ncp;
+        String mode = modeSetting.getValue();
+        boolean ncp = MODE_NCP.equals(mode);
+        boolean blockHit = MODE_BLOCKHIT.equals(mode);
+        if (setting == cpsSetting) return !ncp && !blockHit;
         if (setting == ncpCpsSetting) return ncp;
+        if (setting == blockHitCpsSetting) return blockHit;
         if (setting == doubleClickSetting) return ncp;
         if (setting == holdDurationSetting) return ncp && doubleClickSetting.getValue();
         if (setting == tickSpreaderSetting) return ncp;
@@ -69,7 +74,11 @@ public class LeftClicker extends Module {
             return;
         }
 
+        String mode = modeSetting.getValue();
+        boolean ncp = MODE_NCP.equals(mode);
+        boolean blockHit = MODE_BLOCKHIT.equals(mode);
         boolean down = Mouse.isButtonDown(0);
+        boolean rightDown = Mouse.isButtonDown(1);
         long now = System.currentTimeMillis();
 
         if (down && !wasDown) {
@@ -84,6 +93,32 @@ public class LeftClicker extends Module {
             return;
         }
 
+        if (blockHit) {
+            if (!rightDown) {
+                reset();
+                return;
+            }
+            if (mc.thePlayer.isUsingItem()) {
+                lastAttackTick = mc.thePlayer.ticksExisted;
+                return;
+            }
+
+            long delay = (long) delaySetting.getValue();
+            if (now - pressTime < delay) return;
+
+            if (mc.thePlayer.ticksExisted == lastAttackTick) return;
+
+            double cps = blockHitCpsSetting.getValue();
+            if (cps <= 0) return;
+            double chance = Math.min(1.0, (cps / 20.0) * jitterFactor());
+
+            if (Math.random() < chance) {
+                blockHitClick();
+                lastAttackTick = mc.thePlayer.ticksExisted;
+            }
+            return;
+        }
+
         if (mc.thePlayer.isUsingItem()) {
             lastAttackTick = mc.thePlayer.ticksExisted;
             return;
@@ -94,7 +129,6 @@ public class LeftClicker extends Module {
 
         if (mc.thePlayer.ticksExisted == lastAttackTick) return;
 
-        boolean ncp = MODE_NCP.equals(modeSetting.getValue());
         double cps = ncp ? ncpCpsSetting.getValue() : cpsSetting.getValue();
         if (cps <= 0) return;
         double chance = Math.min(1.0, (cps / 20.0) * jitterFactor());
@@ -118,6 +152,24 @@ public class LeftClicker extends Module {
                     }
                 }
             }
+        }
+    }
+
+    private void blockHitClick() {
+        if (mc.playerController == null || mc.getNetHandler() == null) return;
+        if (mc.objectMouseOver == null || mc.objectMouseOver.entityHit == null) return;
+
+        mc.thePlayer.stopUsingItem();
+        mc.playerController.onStoppedUsingItem(mc.thePlayer);
+
+        MovingObjectPosition over = mc.objectMouseOver;
+        if (over != null && over.typeOfHit == MovingObjectPosition.MovingObjectType.ENTITY && over.entityHit != null) {
+            mc.thePlayer.swingItem();
+            mc.playerController.attackEntity(mc.thePlayer, over.entityHit);
+        }
+
+        if (mc.thePlayer.getHeldItem() != null) {
+            mc.playerController.sendUseItem(mc.thePlayer, mc.theWorld, mc.thePlayer.getHeldItem());
         }
     }
 
