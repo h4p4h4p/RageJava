@@ -17,9 +17,8 @@ public class LeftClicker extends Module {
     public static final String MODE_NORMAL = "Normal";
     public static final String MODE_TRIGGER = "Trigger";
     public static final String MODE_NCP = "NCP";
-    public static final String MODE_BLOCKHIT = "BlockHit";
 
-    private final ModeSetting modeSetting = new ModeSetting("Mode", new String[]{MODE_NORMAL, MODE_TRIGGER, MODE_NCP, MODE_BLOCKHIT}, 0);
+    private final ModeSetting modeSetting = new ModeSetting("Mode", new String[]{MODE_NORMAL, MODE_TRIGGER, MODE_NCP}, 0);
     private final SliderSetting delaySetting = new SliderSetting("Delay", 100, 0, 1000, 10);
     private final SliderSetting cpsSetting = new SliderSetting("CPS", 12, 1, 24, 1);
     private final SliderSetting ncpCpsSetting = new SliderSetting("NCP CPS", 12, 1, 18, 1);
@@ -28,6 +27,7 @@ public class LeftClicker extends Module {
     private final SliderSetting holdDurationSetting = new SliderSetting("Hold Duration", 50, 10, 200, 10);
     private final BooleanSetting tickSpreaderSetting = new BooleanSetting("Tick Spreader", false);
     private final SliderSetting dropChanceSetting = new SliderSetting("Drop Chance", 0, 0, 95, 5);
+    private final BooleanSetting blockHitSetting = new BooleanSetting("BlockHit", false);
     private final SliderSetting blockHitCpsSetting = new SliderSetting("BlockHit CPS", 12, 1, 20, 1);
 
     private final Minecraft mc = Minecraft.getMinecraft();
@@ -47,6 +47,8 @@ public class LeftClicker extends Module {
         settings.add(holdDurationSetting);
         settings.add(tickSpreaderSetting);
         settings.add(dropChanceSetting);
+        settings.add(blockHitSetting);
+        settings.add(blockHitCpsSetting);
         MinecraftForge.EVENT_BUS.register(this);
     }
 
@@ -54,7 +56,7 @@ public class LeftClicker extends Module {
     public boolean isSettingVisible(Setting setting) {
         String mode = modeSetting.getValue();
         boolean ncp = MODE_NCP.equals(mode);
-        boolean blockHit = MODE_BLOCKHIT.equals(mode);
+        boolean blockHit = blockHitSetting.getValue();
         if (setting == cpsSetting) return !ncp && !blockHit;
         if (setting == ncpCpsSetting) return ncp;
         if (setting == blockHitCpsSetting) return blockHit;
@@ -76,7 +78,7 @@ public class LeftClicker extends Module {
 
         String mode = modeSetting.getValue();
         boolean ncp = MODE_NCP.equals(mode);
-        boolean blockHit = MODE_BLOCKHIT.equals(mode);
+        boolean blockHit = blockHitSetting.getValue();
         boolean down = Mouse.isButtonDown(0);
         boolean rightDown = Mouse.isButtonDown(1);
         long now = System.currentTimeMillis();
