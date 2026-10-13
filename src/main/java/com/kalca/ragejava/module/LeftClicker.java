@@ -23,9 +23,6 @@ public class LeftClicker extends Module {
     private final SliderSetting cpsSetting = new SliderSetting("CPS", 12, 1, 24, 1);
     private final SliderSetting ncpCpsSetting = new SliderSetting("NCP CPS", 12, 1, 18, 1);
     private final SliderSetting randomSetting = new SliderSetting("Randomization", 0, 0, 100, 5);
-    private final BooleanSetting doubleClickSetting = new BooleanSetting("Double Click", false);
-    private final SliderSetting holdDurationSetting = new SliderSetting("Hold Duration", 50, 10, 200, 10);
-    private final BooleanSetting tickSpreaderSetting = new BooleanSetting("Tick Spreader", false);
     private final SliderSetting dropChanceSetting = new SliderSetting("Drop Chance", 0, 0, 95, 5);
     private final BooleanSetting blockHitSetting = new BooleanSetting("BlockHit", false);
     private final SliderSetting blockHitCpsSetting = new SliderSetting("BlockHit CPS", 12, 1, 20, 1);
@@ -34,7 +31,6 @@ public class LeftClicker extends Module {
     private boolean wasDown;
     private long pressTime;
     private int lastAttackTick = -1;
-    private boolean doubleClicked;
 
     public LeftClicker() {
         super("LeftClicker", Category.COMBAT);
@@ -43,9 +39,6 @@ public class LeftClicker extends Module {
         settings.add(cpsSetting);
         settings.add(ncpCpsSetting);
         settings.add(randomSetting);
-        settings.add(doubleClickSetting);
-        settings.add(holdDurationSetting);
-        settings.add(tickSpreaderSetting);
         settings.add(dropChanceSetting);
         settings.add(blockHitSetting);
         settings.add(blockHitCpsSetting);
@@ -60,9 +53,6 @@ public class LeftClicker extends Module {
         if (setting == cpsSetting) return !ncp && !blockHit;
         if (setting == ncpCpsSetting) return ncp;
         if (setting == blockHitCpsSetting) return blockHit;
-        if (setting == doubleClickSetting) return ncp;
-        if (setting == holdDurationSetting) return ncp && doubleClickSetting.getValue();
-        if (setting == tickSpreaderSetting) return ncp;
         if (setting == dropChanceSetting) return ncp;
         return true;
     }
@@ -86,7 +76,6 @@ public class LeftClicker extends Module {
         if (down && !wasDown) {
             pressTime = now;
             lastAttackTick = -1;
-            doubleClicked = false;
         }
         wasDown = down;
 
@@ -135,9 +124,8 @@ public class LeftClicker extends Module {
         if (cps <= 0) return;
         double chance = Math.min(1.0, (cps / 20.0) * jitterFactor());
 
-        if (ncp && tickSpreaderSetting.getValue()) {
-            if (mc.thePlayer.ticksExisted % 2 != 0) return;
-        }
+        // Built-in tick spreader for NCP mode - only attack on even ticks
+        if (ncp && mc.thePlayer.ticksExisted % 2 != 0) return;
 
         if (Math.random() < chance) {
             if (ncp && dropChanceSetting.getValue() > 0 && Math.random() * 100 < dropChanceSetting.getValue()) {
@@ -145,14 +133,6 @@ public class LeftClicker extends Module {
             } else {
                 click();
                 lastAttackTick = mc.thePlayer.ticksExisted;
-
-                if (ncp && doubleClickSetting.getValue() && !doubleClicked) {
-                    doubleClicked = true;
-                    long holdMs = (long) holdDurationSetting.getValue();
-                    if (now + holdMs > pressTime) {
-                        click();
-                    }
-                }
             }
         }
     }
@@ -214,7 +194,6 @@ public class LeftClicker extends Module {
         wasDown = false;
         pressTime = 0;
         lastAttackTick = -1;
-        doubleClicked = false;
     }
 
     @Override
