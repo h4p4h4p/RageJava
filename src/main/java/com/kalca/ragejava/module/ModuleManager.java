@@ -22,7 +22,7 @@ public class ModuleManager {
         modules.add(new Fullbright());
         modules.add(new NoHurtCam());
         modules.add(new Interface());
-        modules.add(new NameSpoof());
+        modules.add(new NameHider());
         modules.add(new Jetpack());
     }
 
