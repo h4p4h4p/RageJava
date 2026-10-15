@@ -343,11 +343,6 @@ public class ModuleButton {
             return true;
         }
 
-        if (mx > x + width - EXPAND_ZONE) {
-            expanded = !expanded;
-            return true;
-        }
-
         module.toggle();
         return true;
     }
