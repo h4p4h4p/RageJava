@@ -22,8 +22,8 @@ import org.lwjgl.input.Keyboard;
 @Mod(modid = RageJava.MODID, name = RageJava.NAME, version = RageJava.VERSION)
 public class RageJava {
 
-    public static final String MODID = "ragejava";
-    public static final String NAME = "RageJava";
+    public static final String MODID = "velocity";
+    public static final String NAME = "Velocity";
     public static final String VERSION = "0.3";
 
     public static RageJava INSTANCE;
@@ -33,7 +33,7 @@ public class RageJava {
     public ClickGUI clickGui;
     public CommandManager commandManager;
 
-    public final KeyBinding clickGuiKey = new KeyBinding("ClickGUI", Keyboard.KEY_K, "RageJava");
+    public final KeyBinding clickGuiKey = new KeyBinding("ClickGUI", Keyboard.KEY_K, "Velocity");
 
     private final Minecraft mc = Minecraft.getMinecraft();
     private final boolean[] moduleKeyStates = new boolean[256];
